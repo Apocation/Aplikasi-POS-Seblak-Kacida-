@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "452349470207",
+    "project_id": "seblak-pos",
+    "storage_bucket": "seblak-pos.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:452349470207:android:a319c379b028d1168fb3ca",
+        "android_client_info": {
+          "package_name": "com.example.seblak_pos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEW6l-FcC-zuKIFycXd69XXkeyEB4SI0E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

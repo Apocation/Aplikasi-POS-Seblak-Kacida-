@@ -1,4 +1,4 @@
-name: seblak_pos
+name: seblak_kacida
 description: "Aplikasi POS Seblak Kacida"
 publish_to: 'none'
 
@@ -21,11 +21,23 @@ dependencies:
   image_picker: ^1.1.2
   path_provider: ^2.1.2
   http: ^1.2.1
+  firebase_core: ^3.15.2
+  cloud_firestore: ^5.6.12
+
+flutter_launcher_icons:
+
+  android: true
+  ios: true
+  web:
+    generate: true
+    favicon: true
+  image_path: "assets/images/logo/logo_usaha.jpg"
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true

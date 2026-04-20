@@ -99,7 +99,7 @@ class Sidebar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Seblak POS',
+                const Text('Seblak Kacida',
                     style: TextStyle(
                         color: Colors.white, fontSize: 15,
                         fontWeight: FontWeight.w700, letterSpacing: -0.3)),

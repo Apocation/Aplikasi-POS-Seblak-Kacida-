@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../core/services/data_notifier.dart';
 import '../../theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/database/database_helper.dart';
@@ -16,10 +17,12 @@ class ProdukPage extends StatefulWidget {
   const ProdukPage({super.key});
 
   @override
-  State<ProdukPage> createState() => _ProdukPageState();
+State<ProdukPage> createState() => _ProdukPageState();
 }
 
-class _ProdukPageState extends State<ProdukPage> {
+class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
+  @override
+  void onDataChanged() => _load();
   List<Map<String, dynamic>> _produk = [];
   bool _loading = true;
   String _kategori = 'Semua';
@@ -174,7 +177,7 @@ class _ProdukPageState extends State<ProdukPage> {
               children: [
                 Row(children: const [
                   Text('📦 ', style: TextStyle(fontSize: 22)),
-                  Text('Manajemen Produk',
+                  Text('Produk',
                       style: TextStyle(
                         fontSize:   22,
                         fontWeight: FontWeight.w800,

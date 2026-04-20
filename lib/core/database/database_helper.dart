@@ -1,7 +1,7 @@
-// database.dart
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:uuid/uuid.dart';
+import '../services/firebase_service.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -118,352 +118,64 @@ class DatabaseHelper {
     // DEFAULT PRODUCTS
     final products = [
       // ── BASE SEBLAK ──────────────────────────────────────
-      {
-        'name': 'Mie Kuning',
-        'category': 'Base',
-        'price': 3000.0,
-        'stock': 100,
-        'image_url': 'assets/images/base seblak/mie.jpg',
-      },
- 
+      {'name': 'Mie Kuning', 'category': 'Base', 'price': 3000.0, 'stock': 100, 'image_url': 'assets/images/base seblak/mie.jpg'},
       // ── TOPPING ──────────────────────────────────────────
-      {
-        'name': 'Bakso Besar',
-        'category': 'Topping',
-        'price': 5000.0,
-        'stock': 50,
-        'image_url': 'assets/images/topping/bakso_besar.jpeg',
-      },
-      {
-        'name': 'Bakso Kecil',
-        'category': 'Topping',
-        'price': 3000.0,
-        'stock': 50,
-        'image_url': 'assets/images/topping/bakso_kecil.jpeg',
-      },
-      {
-        'name': 'Crab Stick',
-        'category': 'Topping',
-        'price': 5000.0,
-        'stock': 40,
-        'image_url': 'assets/images/topping/crab_stick.jpeg',
-      },
-      {
-        'name': 'Dumpling Ayam',
-        'category': 'Topping',
-        'price': 6000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/dumpling_ayam.jpeg',
-      },
-      {
-        'name': 'Dumpling Keju',
-        'category': 'Topping',
-        'price': 6500.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/dumpling_keju.jpeg',
-      },
-      {
-        'name': 'Fish Roll',
-        'category': 'Topping',
-        'price': 7000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/fish_roll.jpeg',
-      },
-      {
-        'name': 'Otak-otak Ikan',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 40,
-        'image_url': 'assets/images/topping/otak-otak_ikan.jpeg',
-      },
-      {
-        'name': 'Pempek',
-        'category': 'Topping',
-        'price': 5000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/pempek.jpeg',
-      },
-      {
-        'name': 'Sosis Ayam',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 50,
-        'image_url': 'assets/images/topping/sosis_ayam.jpeg',
-      },
-      {
-        'name': 'Sosis Sapi',
-        'category': 'Topping',
-        'price': 5000.0,
-        'stock': 50,
-        'image_url': 'assets/images/topping/sosis_sapi.jpeg',
-      },
-      {
-        'name': 'Tahu Bakso',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 40,
-        'image_url': 'assets/images/topping/tahu_bakso.jpeg',
-      },
-      {
-        'name': 'Udang',
-        'category': 'Topping',
-        'price': 6000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/udang.jpeg',
-      },
-      // name1 - name19, name21 - name23 (belum ada nama, bisa diganti nanti)
-      {
-        'name': 'Topping 1',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name1.jpeg',
-      },
-      {
-        'name': 'Topping 2',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name2.jpeg',
-      },
-      {
-        'name': 'Topping 3',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name3.jpeg',
-      },
-      {
-        'name': 'Topping 4',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name4.jpeg',
-      },
-      {
-        'name': 'Topping 5',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name5.jpeg',
-      },
-      {
-        'name': 'Topping 6',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name6.jpeg',
-      },
-      {
-        'name': 'Topping 7',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name7.jpeg',
-      },
-      {
-        'name': 'Topping 8',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name8.jpeg',
-      },
-      {
-        'name': 'Topping 9',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name9.jpeg',
-      },
-      {
-        'name': 'Topping 10',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name10.jpeg',
-      },
-      {
-        'name': 'Topping 11',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name11.jpeg',
-      },
-      {
-        'name': 'Topping 12',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name12.jpeg',
-      },
-      {
-        'name': 'Topping 13',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name13.jpeg',
-      },
-      {
-        'name': 'Topping 14',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name14.jpeg',
-      },
-      {
-        'name': 'Topping 15',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name15.jpeg',
-      },
-      {
-        'name': 'Topping 16',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name16.jpeg',
-      },
-      {
-        'name': 'Topping 17',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name17.jpeg',
-      },
-      {
-        'name': 'Topping 18',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name18.jpeg',
-      },
-      {
-        'name': 'Topping 19',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name19.jpeg',
-      },
-      {
-        'name': 'Topping 21',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name21.jpeg',
-      },
-      {
-        'name': 'Topping 22',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name22.jpeg',
-      },
-      {
-        'name': 'Topping 23',
-        'category': 'Topping',
-        'price': 4000.0,
-        'stock': 30,
-        'image_url': 'assets/images/topping/name23.jpeg',
-      },
- 
+      {'name': 'Bakso Besar', 'category': 'Topping', 'price': 5000.0, 'stock': 50, 'image_url': 'assets/images/topping/bakso_besar.jpeg'},
+      {'name': 'Bakso Kecil', 'category': 'Topping', 'price': 3000.0, 'stock': 50, 'image_url': 'assets/images/topping/bakso_kecil.jpeg'},
+      {'name': 'Crab Stick', 'category': 'Topping', 'price': 5000.0, 'stock': 40, 'image_url': 'assets/images/topping/crab_stick.jpeg'},
+      {'name': 'Dumpling Ayam', 'category': 'Topping', 'price': 6000.0, 'stock': 30, 'image_url': 'assets/images/topping/dumpling_ayam.jpeg'},
+      {'name': 'Dumpling Keju', 'category': 'Topping', 'price': 6500.0, 'stock': 30, 'image_url': 'assets/images/topping/dumpling_keju.jpeg'},
+      {'name': 'Fish Roll', 'category': 'Topping', 'price': 7000.0, 'stock': 30, 'image_url': 'assets/images/topping/fish_roll.jpeg'},
+      {'name': 'Otak-otak Ikan', 'category': 'Topping', 'price': 4000.0, 'stock': 40, 'image_url': 'assets/images/topping/otak-otak_ikan.jpeg'},
+      {'name': 'Pempek', 'category': 'Topping', 'price': 5000.0, 'stock': 30, 'image_url': 'assets/images/topping/pempek.jpeg'},
+      {'name': 'Sosis Ayam', 'category': 'Topping', 'price': 4000.0, 'stock': 50, 'image_url': 'assets/images/topping/sosis_ayam.jpeg'},
+      {'name': 'Sosis Sapi', 'category': 'Topping', 'price': 5000.0, 'stock': 50, 'image_url': 'assets/images/topping/sosis_sapi.jpeg'},
+      {'name': 'Tahu Bakso', 'category': 'Topping', 'price': 4000.0, 'stock': 40, 'image_url': 'assets/images/topping/tahu_bakso.jpeg'},
+      {'name': 'Udang', 'category': 'Topping', 'price': 6000.0, 'stock': 30, 'image_url': 'assets/images/topping/udang.jpeg'},
       // ── SAYUR ────────────────────────────────────────────
-      {
-        'name': 'Sayur 1',
-        'category': 'Sayur',
-        'price': 2000.0,
-        'stock': 50,
-        'image_url': 'assets/images/sayur/name20.jpeg',
-      },
-      {
-        'name': 'Sayur 2',
-        'category': 'Sayur',
-        'price': 2000.0,
-        'stock': 50,
-        'image_url': 'assets/images/sayur/name24.jpeg',
-      },
-      {
-        'name': 'Sayur 3',
-        'category': 'Sayur',
-        'price': 2000.0,
-        'stock': 50,
-        'image_url': 'assets/images/sayur/name25.jpeg',
-      },
- 
+      {'name': 'Sayur 1', 'category': 'Sayur', 'price': 2000.0, 'stock': 50, 'image_url': 'assets/images/sayur/name20.jpeg'},
+      {'name': 'Sayur 2', 'category': 'Sayur', 'price': 2000.0, 'stock': 50, 'image_url': 'assets/images/sayur/name24.jpeg'},
+      {'name': 'Sayur 3', 'category': 'Sayur', 'price': 2000.0, 'stock': 50, 'image_url': 'assets/images/sayur/name25.jpeg'},
       // ── LEVEL PEDAS ──────────────────────────────────────
-      {
-        'name': 'Level 1',
-        'category': 'Pedas',
-        'price': 0.0,
-        'stock': 999,
-        'image_url': '',
-      },
-      {
-        'name': 'Level 2',
-        'category': 'Pedas',
-        'price': 0.0,
-        'stock': 999,
-        'image_url': '',
-      },
-      {
-        'name': 'Level 3',
-        'category': 'Pedas',
-        'price': 0.0,
-        'stock': 999,
-        'image_url': '',
-      },
-      {
-        'name': 'Level 4',
-        'category': 'Pedas',
-        'price': 0.0,
-        'stock': 999,
-        'image_url': '',
-      },
-      {
-        'name': 'Level 5',
-        'category': 'Pedas',
-        'price': 0.0,
-        'stock': 999,
-        'image_url': '',
-      },
+      {'name': 'Level 1', 'category': 'Pedas', 'price': 0.0, 'stock': 999, 'image_url': ''},
+      {'name': 'Level 2', 'category': 'Pedas', 'price': 0.0, 'stock': 999, 'image_url': ''},
+      {'name': 'Level 3', 'category': 'Pedas', 'price': 0.0, 'stock': 999, 'image_url': ''},
+      {'name': 'Level 4', 'category': 'Pedas', 'price': 0.0, 'stock': 999, 'image_url': ''},
+      {'name': 'Level 5', 'category': 'Pedas', 'price': 0.0, 'stock': 999, 'image_url': ''},
     ];
  
     for (var product in products) {
       await db.insert('products', {
-        'id':         _uuid.v4(),
-        'name':       product['name'],
-        'category':   product['category'],
-        'price':      product['price'],
-        'stock':      product['stock'],
-        'image_url':  product['image_url'],
+        'id': _uuid.v4(),
+        'name': product['name'],
+        'category': product['category'],
+        'price': product['price'],
+        'stock': product['stock'],
+        'image_url': product['image_url'],
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       });
     }
   }
 
-  // LOGIN
-  Future<Map<String, dynamic>?> login(
-      String username, String password) async {
+  // ==================== LOGIN ====================
+  Future<Map<String, dynamic>?> login(String username, String password) async {
     final db = await instance.database;
-
     final result = await db.query(
       'users',
       where: 'username = ? AND password = ?',
       whereArgs: [username, password],
     );
-
     return result.isNotEmpty ? result.first : null;
   }
 
-  // PRODUCTS METHODS
+  // ==================== PRODUCTS METHODS ====================
   Future<String> insertProduct(Map<String, dynamic> data) async {
     final db = await instance.database;
     final id = _uuid.v4();
     data['id'] = id;
     data['created_at'] = DateTime.now().toIso8601String();
     data['updated_at'] = DateTime.now().toIso8601String();
-
     await db.insert('products', data);
     return id;
   }
@@ -492,21 +204,31 @@ class DatabaseHelper {
 
   Future<int> updateProductStock(String productId, int newStock) async {
     final db = await instance.database;
-    return await db.update(
+    final result = await db.update(
       'products',
       {'stock': newStock, 'updated_at': DateTime.now().toIso8601String()},
       where: 'id = ?',
       whereArgs: [productId],
     );
+    return result;
   }
 
-  // ORDERS METHODS
+  Future<void> clearProducts() async {
+    final db = await instance.database;
+    await db.delete('products');
+  }
+
+  Future<List<Map<String, dynamic>>> getAllProducts() async {
+    final db = await instance.database;
+    return await db.query('products');
+  }
+
+  // ==================== ORDERS METHODS ====================
   Future<String> createOrder(Map<String, dynamic> orderData) async {
     final db = await instance.database;
     final id = _uuid.v4();
     orderData['id'] = id;
     orderData['created_at'] = DateTime.now().toIso8601String();
-
     await db.insert('orders', orderData);
     return id;
   }
@@ -532,14 +254,89 @@ class DatabaseHelper {
     );
   }
 
-  // ORDER ITEMS METHODS
+  Future<List<Map<String, dynamic>>> getOrdersByDateRange(DateTime startDate, DateTime endDate) async {
+    final db = await instance.database;
+    final startStr = startDate.toIso8601String();
+    final endStr = endDate.toIso8601String();
+    return await db.query(
+      'orders',
+      where: 'created_at >= ? AND created_at <= ?',
+      whereArgs: [startStr, endStr],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getOrdersByPaymentMethod(String method) async {
+    final db = await instance.database;
+    return await db.query(
+      'orders',
+      where: 'payment_method = ?',
+      whereArgs: [method],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getOrdersByStatus(String status) async {
+    final db = await instance.database;
+    return await db.query(
+      'orders',
+      where: 'status = ?',
+      whereArgs: [status],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getTodayOrders() async {
+    final db = await instance.database;
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    return await db.rawQuery(
+      'SELECT * FROM orders WHERE DATE(created_at) = ? ORDER BY created_at DESC',
+      [today],
+    );
+  }
+
+  Future<int> deleteOrder(String id) async {
+    final db = await instance.database;
+    return await db.delete('orders', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<double> getTotalRevenue() async {
+    final db = await instance.database;
+    final result = await db.rawQuery('SELECT SUM(total_price) as total FROM orders WHERE status = "Paid"');
+    return (result.first['total'] ?? 0.0) as double;
+  }
+
+  Future<double> getRevenueByDateRange(DateTime startDate, DateTime endDate) async {
+    final db = await instance.database;
+    final startStr = startDate.toIso8601String();
+    final endStr = endDate.toIso8601String();
+    final result = await db.rawQuery(
+      'SELECT SUM(total_price) as total FROM orders WHERE status = "Paid" AND created_at >= ? AND created_at <= ?',
+      [startStr, endStr],
+    );
+    return (result.first['total'] ?? 0.0) as double;
+  }
+
+  Future<int> getOrderCount() async {
+    final db = await instance.database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM orders');
+    return (result.first['count'] ?? 0) as int;
+  }
+
+  Future<int> getPaidOrderCount() async {
+    final db = await instance.database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM orders WHERE status = "Paid"');
+    return (result.first['count'] ?? 0) as int;
+  }
+
+  // ==================== ORDER ITEMS METHODS ====================
   Future<String> addOrderItem(Map<String, dynamic> itemData) async {
     final db = await instance.database;
     final id = _uuid.v4();
     itemData['id'] = id;
     itemData['created_at'] = DateTime.now().toIso8601String();
-
     await db.insert('order_items', itemData);
+    await _updateOrderTotal(itemData['order_id']);
     return id;
   }
 
@@ -552,42 +349,140 @@ class DatabaseHelper {
     );
   }
 
-  // DASHBOARD METHODS
+  Future<List<Map<String, dynamic>>> getOrderItemsWithProduct(String orderId) async {
+    final db = await instance.database;
+    return await db.rawQuery('''
+      SELECT oi.*, p.name, p.image_url 
+      FROM order_items oi
+      LEFT JOIN products p ON p.id = oi.product_id
+      WHERE oi.order_id = ?
+      ORDER BY oi.created_at ASC
+    ''', [orderId]);
+  }
+
+  Future<int> updateOrderItemQuantity(String itemId, int newQuantity) async {
+    final db = await instance.database;
+    final item = await db.query(
+      'order_items',
+      where: 'id = ?',
+      whereArgs: [itemId],
+    );
+    if (item.isEmpty) return 0;
+    final price = (item.first['subtotal'] as double) / (item.first['quantity'] as int);
+    final newSubtotal = price * newQuantity;
+    final result = await db.update(
+      'order_items',
+      {'quantity': newQuantity, 'subtotal': newSubtotal},
+      where: 'id = ?',
+      whereArgs: [itemId],
+    );
+    if (result > 0) {
+      final orderId = item.first['order_id'] as String;
+      await _updateOrderTotal(orderId);
+    }
+    return result;
+  }
+
+  Future<int> removeOrderItem(String itemId) async {
+    final db = await instance.database;
+    final item = await db.query(
+      'order_items',
+      where: 'id = ?',
+      whereArgs: [itemId],
+    );
+    final result = await db.delete('order_items', where: 'id = ?', whereArgs: [itemId]);
+    if (result > 0 && item.isNotEmpty) {
+      await _updateOrderTotal(item.first['order_id'] as String);
+    }
+    return result;
+  }
+
+  Future<int> clearOrderItems(String orderId) async {
+    final db = await instance.database;
+    final result = await db.delete('order_items', where: 'order_id = ?', whereArgs: [orderId]);
+    await db.update('orders', {'total_price': 0.0}, where: 'id = ?', whereArgs: [orderId]);
+    return result;
+  }
+
+  Future<void> _updateOrderTotal(String orderId) async {
+    final db = await instance.database;
+    final result = await db.rawQuery(
+      'SELECT SUM(subtotal) as total FROM order_items WHERE order_id = ?',
+      [orderId],
+    );
+    final total = (result.first['total'] ?? 0.0) as double;
+    await db.update('orders', {'total_price': total}, where: 'id = ?', whereArgs: [orderId]);
+  }
+
+  Future<bool> completeOrder(String orderId, String paymentMethod) async {
+    final db = await instance.database;
+    return await db.transaction((txn) async {
+      final items = await txn.query('order_items', where: 'order_id = ?', whereArgs: [orderId]);
+      for (final item in items) {
+        final productId = item['product_id'] as String;
+        final quantity = item['quantity'] as int;
+        final product = await txn.query('products', where: 'id = ?', whereArgs: [productId]);
+        if (product.isEmpty) throw Exception('Product not found: $productId');
+        final currentStock = product.first['stock'] as int;
+        final newStock = currentStock - quantity;
+        if (newStock < 0) throw Exception('Insufficient stock for product: ${product.first['name']}');
+        await txn.update('products', {'stock': newStock, 'updated_at': DateTime.now().toIso8601String()}, where: 'id = ?', whereArgs: [productId]);
+      }
+      await txn.update('orders', {'status': 'Paid', 'payment_method': paymentMethod}, where: 'id = ?', whereArgs: [orderId]);
+      return true;
+    });
+  }
+
+  Future<Map<String, dynamic>> getOrderSummary(String orderId) async {
+    final db = await instance.database;
+    final result = await db.rawQuery('''
+      SELECT o.*, COUNT(oi.id) as item_count, SUM(oi.quantity) as total_items
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.id = ?
+      GROUP BY o.id
+    ''', [orderId]);
+    return result.isEmpty ? {} : result.first;
+  }
+
+  // ==================== SYNC METHODS (untuk Firebase) ====================
+  Future<List<Map<String, dynamic>>> getAllOrdersWithItems() async {
+    final db = await instance.database;
+    final orders = await db.query('orders', orderBy: 'created_at DESC');
+    final List<Map<String, dynamic>> result = [];
+    for (final order in orders) {
+      final items = await db.query('order_items', where: 'order_id = ?', whereArgs: [order['id']]);
+      result.add({'order': order, 'items': items});
+    }
+    return result;
+  }
+
+  Future<void> clearAllTransactions() async {
+    final db = await instance.database;
+    await db.delete('order_items');
+    await db.delete('orders');
+  }
+
+  Future<void> insertTransactionFromCloud(Map<String, dynamic> transactionData) async {
+    final db = await instance.database;
+    final order = Map<String, dynamic>.from(transactionData['order']);
+    await db.insert('orders', order, conflictAlgorithm: ConflictAlgorithm.replace);
+    final items = transactionData['items'] as List;
+    for (final item in items) {
+      await db.insert('order_items', item, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  // ==================== DASHBOARD METHODS ====================
   Future<Map<String, dynamic>> getDashboardStats() async {
     final db = await instance.database;
-
-    // Total products
-    final totalProducts = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM products'),
-    ) ?? 0;
-
-    // Low stock products (< 10)
-    final lowStockProducts = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM products WHERE stock < 10'),
-    ) ?? 0;
-
-    // Total orders
-    final totalOrders = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM orders'),
-    ) ?? 0;
-
-    // Total revenue
+    final totalProducts = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM products')) ?? 0;
+    final lowStockProducts = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM products WHERE stock < 10')) ?? 0;
+    final totalOrders = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM orders')) ?? 0;
     final totalRevenue = (await db.rawQuery('SELECT SUM(total_price) FROM orders WHERE status = "Paid"')).first['SUM(total_price)'] ?? 0.0;
-
-    // Today's sales
     final today = DateTime.now().toIso8601String().split('T')[0];
-    final todayRevenue = (await db.rawQuery(
-      'SELECT SUM(total_price) FROM orders WHERE status = "Paid" AND DATE(created_at) = ?',
-      [today],
-    )).first['SUM(total_price)'] ?? 0.0;
-
-    final todayOrders = Sqflite.firstIntValue(
-      await db.rawQuery(
-        'SELECT COUNT(*) FROM orders WHERE status = "Paid" AND DATE(created_at) = ?',
-        [today],
-      ),
-    ) ?? 0;
-
+    final todayRevenue = (await db.rawQuery('SELECT SUM(total_price) FROM orders WHERE status = "Paid" AND DATE(created_at) = ?', [today])).first['SUM(total_price)'] ?? 0.0;
+    final todayOrders = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM orders WHERE status = "Paid" AND DATE(created_at) = ?', [today])) ?? 0;
     return {
       'totalProducts': totalProducts,
       'lowStockProducts': lowStockProducts,
@@ -610,7 +505,6 @@ class DatabaseHelper {
     ''', [limit]);
   }
 
-  /// Item terlaris HARI INI saja
   Future<List<Map<String, dynamic>>> getTopSellingProductsToday({int limit = 5}) async {
     final db = await instance.database;
     final today = DateTime.now().toIso8601String().split('T')[0];
@@ -625,20 +519,12 @@ class DatabaseHelper {
       LIMIT ?
     ''', [today, limit]);
   }
- 
-  /// Produk stok rendah (< 10)
+
   Future<List<Map<String, dynamic>>> getLowStockProducts({int threshold = 10}) async {
     final db = await instance.database;
-    return await db.query(
-      'products',
-      where: 'stock < ? AND stock > 0',
-      whereArgs: [threshold],
-      orderBy: 'stock ASC',
-      limit: 5,
-    );
+    return await db.query('products', where: 'stock < ? AND stock > 0', whereArgs: [threshold], orderBy: 'stock ASC', limit: 5);
   }
- 
-  /// Transaksi terakhir beserta jumlah item
+
   Future<List<Map<String, dynamic>>> getRecentOrders({int limit = 5}) async {
     final db = await instance.database;
     return await db.rawQuery('''
@@ -657,42 +543,32 @@ class DatabaseHelper {
     if (range == 'Harian') {
       return await db.rawQuery('''
         SELECT DATE(created_at) AS label, SUM(total_price) AS total
-        FROM orders
-        WHERE status = "Paid"
+        FROM orders WHERE status = "Paid"
         GROUP BY DATE(created_at)
-        ORDER BY DATE(created_at) DESC
-        LIMIT 12
+        ORDER BY DATE(created_at) DESC LIMIT 12
       ''');
     }
-
     if (range == 'Mingguan') {
       return await db.rawQuery('''
         SELECT strftime('%Y-%W', created_at) AS label, SUM(total_price) AS total
-        FROM orders
-        WHERE status = "Paid"
+        FROM orders WHERE status = "Paid"
         GROUP BY strftime('%Y-%W', created_at)
-        ORDER BY strftime('%Y-%W', created_at) DESC
-        LIMIT 12
+        ORDER BY strftime('%Y-%W', created_at) DESC LIMIT 12
       ''');
     }
-
     return await db.rawQuery('''
       SELECT strftime('%Y-%m', created_at) AS label, SUM(total_price) AS total
-      FROM orders
-      WHERE status = "Paid"
+      FROM orders WHERE status = "Paid"
       GROUP BY strftime('%Y-%m', created_at)
-      ORDER BY strftime('%Y-%m', created_at) DESC
-      LIMIT 12
+      ORDER BY strftime('%Y-%m', created_at) DESC LIMIT 12
     ''');
   }
 
-  // SETTINGS METHODS
+  // ==================== SETTINGS METHODS ====================
   Future<Map<String, dynamic>> getSettings() async {
     final db = await instance.database;
     final result = await db.query('settings', limit: 1);
-
     if (result.isEmpty) {
-      // Create default settings if none exist
       final defaultSettings = {
         'id': _uuid.v4(),
         'store_name': 'Seblak Kacida',
@@ -706,15 +582,12 @@ class DatabaseHelper {
       await db.insert('settings', defaultSettings);
       return defaultSettings;
     }
-
     return result.first;
   }
 
   Future<int> updateSettings(Map<String, dynamic> settings) async {
     final db = await instance.database;
     settings['updated_at'] = DateTime.now().toIso8601String();
-
-    // Check if settings exist
     final existing = await db.query('settings', limit: 1);
     if (existing.isEmpty) {
       settings['id'] = _uuid.v4();
@@ -727,30 +600,13 @@ class DatabaseHelper {
 
   Future<void> resetDatabase() async {
     final db = await instance.database;
-
-    // Delete all data from tables
     await db.delete('order_items');
     await db.delete('orders');
     await db.delete('products');
     await db.delete('users');
     await db.delete('settings');
-
-    // Re-insert default users
-    await db.insert('users', {
-      'id': _uuid.v4(),
-      'username': 'admin',
-      'password': 'admin123',
-      'role': 'admin'
-    });
-
-    await db.insert('users', {
-      'id': _uuid.v4(),
-      'username': 'kasir',
-      'password': 'kasir123',
-      'role': 'kasir'
-    });
-
-    // Re-insert default settings
+    await db.insert('users', {'id': _uuid.v4(), 'username': 'admin', 'password': 'admin123', 'role': 'admin'});
+    await db.insert('users', {'id': _uuid.v4(), 'username': 'kasir', 'password': 'kasir123', 'role': 'kasir'});
     await db.insert('settings', {
       'id': _uuid.v4(),
       'store_name': 'Seblak Kacida',

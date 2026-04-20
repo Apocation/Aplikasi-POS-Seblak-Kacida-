@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import '../../theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/database/database_helper.dart';
-import '../../core/services/sheets_service.dart';
+// import '../../core/services/sheets_service.dart';
+
 
 // ============================================================
 //  DEBUG PAGE — Database Viewer
@@ -53,7 +54,9 @@ class _DebugPageState extends State<DebugPage>
       // Ambil data via DatabaseHelper (bukan langsung akses .database)
       final produk    = await DatabaseHelper.instance.getProducts();
       final transaksi = await DatabaseHelper.instance.getOrders();
-      final pending = await SheetsService.instance.getPendingCount();
+// SheetsService removed
+final pending = 0;
+
 
       // Order items — query manual via db
       List<Map<String, dynamic>> enrichedItems = [];
@@ -141,7 +144,7 @@ class _DebugPageState extends State<DebugPage>
     );
   }
 
-  // ── Summary stats ─────────────────────────────────────────
+// ── Summary stats ─────────────────────────────────────────
   double get _totalOmzet => _transaksi.fold(
       0.0,
       (s, t) =>
@@ -150,7 +153,14 @@ class _DebugPageState extends State<DebugPage>
   int get _stokHabis =>
       _produk.where((p) => (p['stock'] as int? ?? 0) == 0).length;
 
-  // _stokRendah unused - removed
+  int _stokRendah() =>
+      _produk.where((p) {
+        final s = p['stock'] as int? ?? 0;
+        return s > 0 && s < 10;
+      }).length;
+
+
+
 
   // ============================================================
   //  BUILD
@@ -268,33 +278,8 @@ class _DebugPageState extends State<DebugPage>
             const SizedBox(height: 12),
 
             // Sheets queue badge
-            if (_pendingCount > 0)
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: pad),
-                child: Container(
-                  width:   double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color:        PosColors.warningBg,
-                    borderRadius: BorderRadius.circular(PosRadius.md),
-                    border: Border.all(
-                        color: const Color(0xFFFDE68A)),
-                  ),
-                  child: Row(children: [
-                    const Icon(Icons.schedule_rounded,
-                        size: 15, color: PosColors.warning),
-                    const SizedBox(width: 8),
-                    Text(
-                      '$_pendingCount transaksi belum terkirim ke Google Sheets',
-                      style: const TextStyle(
-                          fontSize: 12, color: PosColors.warning,
-                          fontWeight: FontWeight.w600),
-                    ),
-                  ]),
-                ),
-              ),
-            if (_pendingCount > 0) const SizedBox(height: 8),
+// REMOVED: Sheets pending queue badge
+
 
             // Tab bar
             Padding(

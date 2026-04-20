@@ -11,6 +11,7 @@ import 'features/transaksi/transaksi_page.dart';
 import 'features/laporan/laporan_page.dart';
 import 'features/setting/setting_page.dart';
 import 'features/debug/debug_page.dart';
+import 'core/services/sheets_service.dart';
 
 class HomePage extends StatefulWidget {
   final String userRole;
@@ -52,8 +53,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    // Inisialisasi Sheets service — load URL yang tersimpan
-    SheetsService.instance.init();
+    // Sheets service disabled
   }
 
   String get _pageTitle {
@@ -62,7 +62,7 @@ class _HomePageState extends State<HomePage> {
         case 0: return 'Dashboard';
         case 1: return 'Kasir';
         case 2: return 'Transaksi';
-        default: return 'Seblak POS';
+        default: return 'Seblak Kacida';
       }
     }
     switch (_selectedIndex) {
@@ -73,7 +73,7 @@ class _HomePageState extends State<HomePage> {
       case 4: return 'Laporan';
       case 5: return 'Setting';
       case 6: return 'Database';
-      default: return 'Seblak POS';
+      default: return 'Seblak Kacida';
     }
   }
 

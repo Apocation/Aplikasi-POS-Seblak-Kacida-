@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+
 import '../../theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/services/data_notifier.dart';
-import '../../core/services/sheets_service.dart';
+
 
 // ============================================================
 //  KASIR PAGE — dengan DataNotifier + Google Sheets sync
@@ -170,36 +170,17 @@ class _KasirPageState extends State<KasirPage>
       // ── REALTIME REFRESH ──────────────────────────────────
       DataNotifier.notify();
 
-      // ── SYNC KE GOOGLE SHEETS ─────────────────────────────
-      if (SheetsService.instance.isConfigured) {
-        final invoice = _invoiceNo(orderId);
-        SheetsService.instance.syncTransaksi(
-          orderId:   orderId,
-          invoiceNo: invoice,
-          total:     totalHarga,
-          metode:    metode,
-          pemesan:   pemesan,
-          catatan:   catatan,
-          items:     tempCart
-              .map((i) => {
-                    'name': i['name'],
-                    'qty':  i['qty'],
-                  })
-              .toList(),
-          waktu: now,
-        ).then((result) {
-          // Silent — tidak ganggu kasir
-          if (!result.success) {
-            debugPrint('Sheets sync failed: ${result.message}');
-          }
-        });
-      }
+// REMOVED: Google Sheets sync
 
-      final kembalian = metode == 'Cash'
+
+  final kembalian = metode == 'Cash'
           ? (bayar - totalHarga).clamp(0, double.infinity).toDouble()
           : 0.0;
 
       if (!mounted) return;
+      Navigator.of(context).pop(); // Auto close cart sheet
+      setState(() => _cart.clear()); // Clear cart
+
       setState(() => _cart.clear());
 
       _showStruk(orderId, metode, totalHarga, tempCart,
@@ -1138,11 +1119,13 @@ class _PaymentDialogState extends State<_PaymentDialog> {
   String _metode   = 'Cash';
   final _amountCtrl = TextEditingController();
   bool _loading    = false;
+  int? _selectedAmount;
 
   @override
   void initState() {
     super.initState();
     _amountCtrl.text = widget.total.toStringAsFixed(0);
+    _selectedAmount = widget.total.round();
   }
 
   @override
@@ -1308,8 +1291,10 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                   runSpacing: 8,
                   children: [5000, 10000, 20000, 50000, 100000]
                       .map((v) => GestureDetector(
-                            onTap: () => setState(() =>
-                                _amountCtrl.text = v.toString()),
+                            onTap: () => setState(() {
+  _selectedAmount = v;
+  _amountCtrl.text = v.toString();
+}),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 8),

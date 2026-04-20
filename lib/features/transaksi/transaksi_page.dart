@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../theme.dart';
-import '../../core/utils/responsive.dart';
 import '../../core/database/database_helper.dart';
+import '../../core/services/data_notifier.dart';
+import '../../core/utils/responsive.dart';
 
 // ============================================================
+
 //  TRANSAKSI PAGE
 //  Riwayat transaksi — expandable card + search + struk dialog
 // ============================================================
@@ -15,8 +18,10 @@ class TransaksiPage extends StatefulWidget {
   State<TransaksiPage> createState() => _TransaksiPageState();
 }
 
-class _TransaksiPageState extends State<TransaksiPage> {
+class _TransaksiPageState extends State<TransaksiPage> with DataRefreshMixin {
+
   List<Map<String, dynamic>> _orders      = [];
+
   bool                       _loading     = true;
   String                     _search      = '';
   final TextEditingController _searchCtrl = TextEditingController();
@@ -103,9 +108,14 @@ class _TransaksiPageState extends State<TransaksiPage> {
   // ============================================================
   //  BUILD
   // ============================================================
+@override
+  void onDataChanged() => _load();
+
   @override
   Widget build(BuildContext context) {
+
     final isMobile  = Responsive.isMobile(context);
+
     final pad       = isMobile ? 16.0 : 24.0;
     final filtered  = _filtered;
 
@@ -443,8 +453,14 @@ class _TransaksiCardState extends State<_TransaksiCard>
     final methodLabel = method == 'Cash' ? 'Tunai' : method;
 
     return Container(
-      decoration: posCardDecoration(),
+      decoration: BoxDecoration(
+        color: PosColors.surface,
+        borderRadius: BorderRadius.circular(PosRadius.lg),
+        border: Border.all(color: PosColors.border, width: 1),
+        boxShadow: const [PosShadows.card],
+      ),
       child: Column(
+
         children: [
           // ── Header row (selalu tampil) ──────────────────
           InkWell(
