@@ -1,12 +1,8 @@
-# App Launcher Icon Update
+# TODO: Upload changes to GitHub
 
-## Status: In Progress
+- [ ] Step 1: Install GitHub CLI (optional)
+- [ ] Step 2: git add .
+- [ ] Step 3: git commit -m "Update POS app: modify kasir_page, home_page, printer_service, permissions, pubspec deps, AndroidManifest, remove sheets_service"
+- [ ] Step 4: git push origin main
+- [ ] Step 5: Verify push and complete
 
-### Steps:
-- [x] Update pubspec.yaml (dependency + config)
-- [ ] Run `flutter pub get`
-- [ ] Run `dart run flutter_launcher_icons`
-- [ ] Verify generated icons in android/app/src/main/res/mipmap-*/
-- [ ] Test on device/emulator `flutter run`
-
-The UI logos already use the new logo correctly. This updates the home screen/app icon.

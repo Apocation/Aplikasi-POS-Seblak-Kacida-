@@ -10,34 +10,44 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  # Database
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0
   path: ^1.8.3
+  
+  # UI
   fl_chart: ^0.68.0
+  cupertino_icons: ^1.0.8
+  
+  # Utilities
   crypto: ^3.0.3
   uuid: ^4.2.1
-  cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.5
   image_picker: ^1.1.2
   path_provider: ^2.1.2
   http: ^1.2.1
+  
+  # Firebase
   firebase_core: ^3.15.2
   cloud_firestore: ^5.6.12
-
-flutter_launcher_icons:
-
-  android: true
-  ios: true
-  web:
-    generate: true
-    favicon: true
-  image_path: "assets/images/logo/logo_usaha.jpg"
+  
+# 🔥 BLUETOOTH PRINTER - PAKAI INI (PASTI BERHASIL) 🔥
+  print_bluetooth_thermal: ^1.1.9
+  
+  # ESC/POS utils (fixed version)
+  flutter_esc_pos_utils_image_3: ^0.1.9
+  
+  # Izin Bluetooth
+  permission_handler: ^12.0.1
+  
+  # Ikon
+  flutter_launcher_icons: ^0.13.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
@@ -47,3 +57,11 @@ flutter:
     - assets/images/base seblak/
     - assets/images/topping/
     - assets/images/sayur/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  web:
+    generate: true
+    favicon: true
+  image_path: "assets/images/logo/logo_usaha.jpg"

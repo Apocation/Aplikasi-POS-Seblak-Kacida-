@@ -5,11 +5,7 @@ import '../../theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/services/data_notifier.dart';
-
-
-// ============================================================
-//  KASIR PAGE — dengan DataNotifier + Google Sheets sync
-// ============================================================
+import '../../core/services/printer_service.dart';
 
 class KasirPage extends StatefulWidget {
   const KasirPage({super.key});
@@ -18,30 +14,253 @@ class KasirPage extends StatefulWidget {
   State<KasirPage> createState() => _KasirPageState();
 }
 
-class _KasirPageState extends State<KasirPage>
-    with DataRefreshMixin {
-
-  String _kategori     = 'Base Seblak';
-  String _namaPemesan  = '';
-  String _catatan      = '';
+class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
+  String _kategori    = 'Base Seblak';
+  String _namaPemesan = '';
+  String _catatan     = '';
   final List<Map<String, dynamic>> _cart = [];
   List<Map<String, dynamic>> _produkList = [];
-  bool _loadingProduk  = true;
+  bool _loadingProduk = true;
+
+  // Printer related
+  bool _isPrinterConnected  = false;
+  String? _connectedPrinterName;
+  bool _isPrinting = false;
 
   static const List<Map<String, String>> _categories = [
     {'label': 'Base Seblak', 'db': 'Base',   'emoji': '🍜'},
-    {'label': 'Topping',     'db': 'Topping','emoji': '🥩'},
-    {'label': 'Sayur',       'db': 'Sayur',  'emoji': '🥬'},
-    {'label': 'Level Pedas', 'db': 'Pedas',  'emoji': '🌶️'},
+    {'label': 'Topping',     'db': 'Topping', 'emoji': '🥩'},
+    {'label': 'Sayur',       'db': 'Sayur',   'emoji': '🥬'},
+    {'label': 'Level Pedas', 'db': 'Pedas',   'emoji': '🌶️'},
   ];
 
   @override
   void initState() {
     super.initState();
     _loadProduk();
+    _checkPrinterStatus();
   }
 
-  // DataRefreshMixin — refresh produk saat data berubah
+  // Cek status koneksi printer saat halaman dibuka
+  Future<void> _checkPrinterStatus() async {
+    final connected = await PrinterService.checkConnection();
+    if (mounted) {
+      setState(() {
+        _isPrinterConnected   = connected;
+        _connectedPrinterName = PrinterService.connectedPrinter;
+      });
+    }
+  }
+
+  // Tampilkan dialog pilih printer & konek
+  Future<void> _connectToPrinter() async {
+    // Kalau sudah konek, tawarkan disconnect
+    if (_isPrinterConnected) {
+      final shouldDisconnect = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Printer Terhubung'),
+          content: Text(
+              'Sedang terhubung ke ${_connectedPrinterName ?? "Printer"}.\nPutuskan koneksi?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Tidak'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: PosColors.error),
+              child: const Text('Putuskan'),
+            ),
+          ],
+        ),
+      );
+      if (shouldDisconnect == true) {
+        await PrinterService.disconnect();
+        if (mounted) {
+          setState(() {
+            _isPrinterConnected   = false;
+            _connectedPrinterName = null;
+          });
+        }
+      }
+      return;
+    }
+
+    // Ambil daftar printer yang sudah di-pair
+    final devices = await PrinterService.getBondedDevices();
+
+    if (devices.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Tidak ada printer Bluetooth yang di-pair. Silakan pair dulu di pengaturan HP.'),
+            backgroundColor: PosColors.error,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pilih Printer Bluetooth'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: devices.length,
+            itemBuilder: (context, index) {
+              // devices adalah List<Map<String, dynamic>>
+              // dengan key 'name' dan 'address'
+              final device = devices[index];
+              final name    = device['name'] as String? ?? 'Unknown';
+              final address = device['address'] as String? ?? '';
+
+              return ListTile(
+                leading: const Icon(Icons.print),
+                title:    Text(name),
+                subtitle: Text(address),
+                onTap: () async {
+                  Navigator.pop(context);
+
+                  // Tampilkan loading
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Menghubungkan ke $name...'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+
+                  // Connect — butuh macAddress dan printerName
+                  final success = await PrinterService.connect(
+                    address,
+                    name,
+                  );
+
+                  if (mounted) {
+                    if (success) {
+                      setState(() {
+                        _isPrinterConnected   = true;
+                        _connectedPrinterName = name;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Terhubung ke $name'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                              'Gagal terhubung ke printer. Pastikan printer menyala.'),
+                          backgroundColor: PosColors.error,
+                        ),
+                      );
+                    }
+                  }
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Cetak struk
+  Future<void> _printReceipt({
+    required String orderId,
+    required String metode,
+    required double total,
+    required double bayar,
+    required double kembalian,
+    required String pemesan,
+    required String catatan,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    // Kalau belum konek, tawarkan konek dulu
+    if (!_isPrinterConnected) {
+      if (mounted) {
+        final shouldConnect = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Printer Belum Terhubung'),
+            content:
+                const Text('Hubungkan ke printer Bluetooth terlebih dahulu?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Tidak'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: PosColors.primary),
+                child: const Text('Ya, Hubungkan'),
+              ),
+            ],
+          ),
+        );
+        if (shouldConnect == true) {
+          await _connectToPrinter();
+        }
+      }
+      return;
+    }
+
+    setState(() => _isPrinting = true);
+
+    try {
+      final success = await PrinterService.printReceipt(
+        invoiceNo: orderId,
+        pemesan:   pemesan.isEmpty ? 'Pelanggan' : pemesan,
+        metode:    metode,
+        total:     total,
+        bayar:     bayar,
+        kembalian: kembalian,
+        items:     items,
+        catatan:   catatan,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                success ? 'Struk berhasil dicetak!' : 'Gagal mencetak struk.'),
+            backgroundColor: success ? Colors.green : PosColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error mencetak: $e'),
+            backgroundColor: PosColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPrinting = false);
+    }
+  }
+
+  // DataRefreshMixin
   @override
   void onDataChanged() => _loadProduk();
 
@@ -55,9 +274,10 @@ class _KasirPageState extends State<KasirPage>
   }
 
   List<Map<String, dynamic>> get _filteredProduk {
-    final dbCat = _categories
-        .firstWhere((c) => c['label'] == _kategori,
-            orElse: () => {'db': _kategori})['db']!;
+    final dbCat = _categories.firstWhere(
+      (c) => c['label'] == _kategori,
+      orElse: () => {'db': _kategori},
+    )['db']!;
     return _produkList
         .where((p) =>
             p['category'] == dbCat && (p['stock'] as int? ?? 0) > 0)
@@ -66,18 +286,17 @@ class _KasirPageState extends State<KasirPage>
 
   double get _total => _cart.fold(
         0.0,
-        (s, e) =>
-            s + (e['price'] as num).toDouble() * (e['qty'] as int),
+        (s, e) => s + (e['price'] as num).toDouble() * (e['qty'] as int),
       );
 
-  String _formatRp(double val) => 'Rp ${val
-      .toStringAsFixed(0)
-      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}';
+  String _formatRp(double val) => 'Rp ${val.toStringAsFixed(0).replaceAllMapped(
+        RegExp(r'\B(?=(\d{3})+(?!\d))'),
+        (_) => '.',
+      )}';
 
   String _invoiceNo(String orderId) {
-    final now = DateTime.now();
-    final d   =
-        '${now.year}${now.month.toString().padLeft(2,'0')}${now.day.toString().padLeft(2,'0')}';
+    final now    = DateTime.now();
+    final d      = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
     final suffix = orderId.length >= 4
         ? orderId.substring(orderId.length - 4).toUpperCase()
         : orderId.toUpperCase();
@@ -99,8 +318,11 @@ class _KasirPageState extends State<KasirPage>
   void _increment(int i) => setState(() => _cart[i]['qty']++);
   void _decrement(int i) {
     setState(() {
-      if (_cart[i]['qty'] > 1) _cart[i]['qty']--;
-      else _cart.removeAt(i);
+      if (_cart[i]['qty'] > 1) {
+        _cart[i]['qty']--;
+      } else {
+        _cart.removeAt(i);
+      }
     });
   }
 
@@ -123,7 +345,6 @@ class _KasirPageState extends State<KasirPage>
 
   Future<void> _prosesBayar(String metode, double bayar) async {
     try {
-      final now        = DateTime.now();
       final totalHarga = _total;
       final tempCart   = List<Map<String, dynamic>>.from(_cart);
       final pemesan    = _namaPemesan.trim();
@@ -136,8 +357,7 @@ class _KasirPageState extends State<KasirPage>
         if (qty > stok) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(
-                  'Stok ${item['name']} tidak cukup! Sisa: $stok'),
+              content: Text('Stok ${item['name']} tidak cukup! Sisa: $stok'),
               backgroundColor: PosColors.error,
             ));
           }
@@ -167,24 +387,26 @@ class _KasirPageState extends State<KasirPage>
         );
       }
 
-      // ── REALTIME REFRESH ──────────────────────────────────
       DataNotifier.notify();
 
-// REMOVED: Google Sheets sync
-
-
-  final kembalian = metode == 'Cash'
+      final kembalian = metode == 'Cash'
           ? (bayar - totalHarga).clamp(0, double.infinity).toDouble()
           : 0.0;
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // Auto close cart sheet
-      setState(() => _cart.clear()); // Clear cart
-
+      Navigator.of(context).pop();
       setState(() => _cart.clear());
 
-      _showStruk(orderId, metode, totalHarga, tempCart,
-          bayar, kembalian, pemesan, catatan);
+      _showStruk(
+        orderId,
+        metode,
+        totalHarga,
+        tempCart,
+        bayar,
+        kembalian,
+        pemesan,
+        catatan,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -199,25 +421,43 @@ class _KasirPageState extends State<KasirPage>
     String orderId,
     String metode,
     double total,
-    List items,
+    List<Map<String, dynamic>> items,
     double bayar,
     double kembalian,
     String pemesan,
     String catatan,
   ) {
+    final invoiceNo = _invoiceNo(orderId);
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => _StrukDialog(
-        invoiceNo:  _invoiceNo(orderId),
-        metode:     metode,
-        total:      total,
-        items:      items,
-        bayar:      bayar,
-        kembalian:  kembalian,
-        pemesan:    pemesan.isEmpty ? 'Pelanggan' : pemesan,
-        catatan:    catatan,
-        formatRp:   _formatRp,
+        invoiceNo: invoiceNo,
+        metode:    metode,
+        total:     total,
+        items:     items,
+        bayar:     bayar,
+        kembalian: kembalian,
+        pemesan:   pemesan.isEmpty ? 'Pelanggan' : pemesan,
+        catatan:   catatan,
+        formatRp:  _formatRp,
+        isPrinting: _isPrinting,
+        onPrint: () => _printReceipt(
+          orderId:   invoiceNo,
+          metode:    metode,
+          total:     total,
+          bayar:     bayar,
+          kembalian: kembalian,
+          pemesan:   pemesan.isEmpty ? 'Pelanggan' : pemesan,
+          catatan:   catatan,
+          items: items
+              .map((item) => {
+                    'name':  item['name'],
+                    'price': (item['price'] as num).toDouble(),
+                    'qty':   item['qty'] as int,
+                  })
+              .toList(),
+        ),
       ),
     );
   }
@@ -230,7 +470,29 @@ class _KasirPageState extends State<KasirPage>
     final isMobile = Responsive.isMobile(context);
     return Scaffold(
       backgroundColor: PosColors.background,
-      body:             isMobile ? _mobileLayout() : _tabletLayout(),
+      appBar: AppBar(
+        title: const Text('Kasir Seblak Kacida'),
+        backgroundColor: PosColors.primary,
+        actions: [
+          // Tombol status & koneksi printer
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: Icon(
+                _isPrinterConnected
+                    ? Icons.bluetooth_connected
+                    : Icons.bluetooth_disabled,
+                color: Colors.white,
+              ),
+              onPressed: _connectToPrinter,
+              tooltip: _isPrinterConnected
+                  ? 'Terhubung: ${_connectedPrinterName ?? "Printer"}'
+                  : 'Hubungkan Printer',
+            ),
+          ),
+        ],
+      ),
+      body:               isMobile ? _mobileLayout() : _tabletLayout(),
       bottomNavigationBar: isMobile ? _mobileBottomBar() : null,
     );
   }
@@ -272,7 +534,8 @@ class _KasirPageState extends State<KasirPage>
                   Text(
                     _formatRp(_total),
                     style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
                         color: PosColors.primary),
                   ),
                 ],
@@ -324,8 +587,7 @@ class _KasirPageState extends State<KasirPage>
         Expanded(
           child: _loadingProduk
               ? const Center(
-                  child: CircularProgressIndicator(
-                      color: PosColors.primary))
+                  child: CircularProgressIndicator(color: PosColors.primary))
               : _menuGrid(),
         ),
       ],
@@ -340,12 +602,14 @@ class _KasirPageState extends State<KasirPage>
         children: const [
           Text('Pesan Seblak',
               style: TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w800,
-                  color: PosColors.textPrimary, letterSpacing: -0.4)),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: PosColors.textPrimary,
+                  letterSpacing: -0.4)),
           SizedBox(height: 4),
           Text('Pilih item favoritmu!',
-              style: TextStyle(
-                  fontSize: 13, color: PosColors.textSecondary)),
+              style:
+                  TextStyle(fontSize: 13, color: PosColors.textSecondary)),
         ],
       ),
     );
@@ -368,7 +632,8 @@ class _KasirPageState extends State<KasirPage>
                     horizontal: 16, vertical: 9),
                 decoration: BoxDecoration(
                   color: sel ? PosColors.primary : PosColors.surface,
-                  borderRadius: BorderRadius.circular(PosRadius.xxl),
+                  borderRadius:
+                      BorderRadius.circular(PosRadius.xxl),
                   border: Border.all(
                     color: sel ? PosColors.primary : PosColors.border,
                     width: 1.5,
@@ -434,8 +699,8 @@ class _KasirPageState extends State<KasirPage>
     return GridView.builder(
       padding: const EdgeInsets.all(16),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount:  crossCount,
-        mainAxisSpacing: 12,
+        crossAxisCount:   crossCount,
+        mainAxisSpacing:  12,
         crossAxisSpacing: 12,
         childAspectRatio: isMobile ? 0.85 : 0.9,
       ),
@@ -454,7 +719,6 @@ class _KasirPageState extends State<KasirPage>
       color: PosColors.background,
       child: Column(
         children: [
-          // Header
           Container(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
             color: PosColors.surface,
@@ -465,7 +729,8 @@ class _KasirPageState extends State<KasirPage>
                 const SizedBox(width: 10),
                 const Text('Keranjang',
                     style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
                         color: PosColors.textPrimary)),
                 const Spacer(),
                 if (_cart.isNotEmpty)
@@ -482,7 +747,6 @@ class _KasirPageState extends State<KasirPage>
             ),
           ),
           Container(height: 1, color: PosColors.border),
-          // Nama pemesan
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
             child: _inputField(
@@ -491,7 +755,6 @@ class _KasirPageState extends State<KasirPage>
               onChange: (v) => setState(() => _namaPemesan = v),
             ),
           ),
-          // Catatan
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
             child: _inputField(
@@ -500,7 +763,6 @@ class _KasirPageState extends State<KasirPage>
               maxLines: 2,
             ),
           ),
-          // Items
           Expanded(
             child: _cart.isEmpty
                 ? _emptyCart()
@@ -533,9 +795,7 @@ class _KasirPageState extends State<KasirPage>
       maxLines:  maxLines,
       decoration: InputDecoration(
         hintText:   hint,
-        prefixIcon: icon != null
-            ? Icon(icon, size: 18)
-            : null,
+        prefixIcon: icon != null ? Icon(icon, size: 18) : null,
         fillColor:  PosColors.surface,
         filled:     true,
         contentPadding: const EdgeInsets.symmetric(
@@ -567,7 +827,8 @@ class _KasirPageState extends State<KasirPage>
           const SizedBox(height: 12),
           const Text('Belum ada item dipilih',
               style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   color: PosColors.textSecondary)),
           const SizedBox(height: 4),
           const Text('Tap item dari menu untuk menambahkan',
@@ -591,25 +852,15 @@ class _KasirPageState extends State<KasirPage>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Subtotal',
-                  style: TextStyle(
-                      fontSize: 13, color: PosColors.textSecondary)),
-              Text(_formatRp(_total),
-                  style: const TextStyle(
-                      fontSize: 13, color: PosColors.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
               const Text('Total',
                   style: TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
                       color: PosColors.textPrimary)),
               Text(_formatRp(_total),
                   style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
                       color: PosColors.primary)),
             ],
           ),
@@ -639,7 +890,7 @@ class _KasirPageState extends State<KasirPage>
 // ============================================================
 
 class _MenuCard extends StatefulWidget {
-  final Map<String, dynamic>  item;
+  final Map<String, dynamic>    item;
   final String Function(double) formatRp;
   final VoidCallback onTap;
   const _MenuCard({
@@ -667,7 +918,10 @@ class _MenuCardState extends State<_MenuCard>
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -733,13 +987,15 @@ class _MenuCardState extends State<_MenuCard>
                     children: [
                       Text(item['name'] as String? ?? '-',
                           style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
                               color: PosColors.textPrimary),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis),
                       Text(widget.formatRp(price),
                           style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
                               color: PosColors.primary)),
                     ],
                   ),
@@ -761,18 +1017,16 @@ class _MenuCardState extends State<_MenuCard>
                 size: 32, color: PosColors.textMuted)),
       );
     }
-    // File lokal (dari kamera/galeri)
     if (!imageUrl.startsWith('assets/')) {
       return Image.file(File(imageUrl),
           fit: BoxFit.cover,
-errorBuilder: (context, error, stackTrace) => Container(
+          errorBuilder: (_, __, ___) => Container(
                 color: PosColors.surfaceAlt,
                 child: const Center(
                     child: Icon(Icons.fastfood_rounded,
                         size: 32, color: PosColors.textMuted)),
               ));
     }
-    // Asset
     return Image.asset(imageUrl,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => Container(
@@ -789,7 +1043,7 @@ errorBuilder: (context, error, stackTrace) => Container(
 // ============================================================
 
 class _CartItem extends StatelessWidget {
-  final Map<String, dynamic>  item;
+  final Map<String, dynamic>    item;
   final String Function(double) formatRp;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
@@ -816,17 +1070,16 @@ class _CartItem extends StatelessWidget {
       decoration: posCardDecoration(withShadow: false),
       child: Row(
         children: [
-          // Gambar kecil
           ClipRRect(
             borderRadius: BorderRadius.circular(PosRadius.sm),
             child: imageUrl.isNotEmpty
                 ? (!imageUrl.startsWith('assets/')
                     ? Image.file(File(imageUrl),
                         width: 40, height: 40, fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => _imgPlaceholder())
+                        errorBuilder: (_, __, ___) => _imgPlaceholder())
                     : Image.asset(imageUrl,
                         width: 40, height: 40, fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => _imgPlaceholder()))
+                        errorBuilder: (_, __, ___) => _imgPlaceholder()))
                 : _imgPlaceholder(),
           ),
           const SizedBox(width: 10),
@@ -836,14 +1089,16 @@ class _CartItem extends StatelessWidget {
               children: [
                 Text(item['name'] as String? ?? '-',
                     style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                         color: PosColors.textPrimary),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 2),
                 Text(formatRp(subtotal),
                     style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                         color: PosColors.primary)),
               ],
             ),
@@ -858,7 +1113,8 @@ class _CartItem extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Text('$qty',
                     style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
                         color: PosColors.textPrimary)),
               ),
               _QtyBtn(
@@ -900,9 +1156,7 @@ class _QtyBtn extends StatelessWidget {
           color: isRemove ? PosColors.errorBg : PosColors.surfaceAlt,
           borderRadius: BorderRadius.circular(PosRadius.sm),
           border: Border.all(
-            color: isRemove
-                ? PosColors.primaryLight
-                : PosColors.border,
+            color: isRemove ? PosColors.primaryLight : PosColors.border,
           ),
         ),
         child: Icon(icon,
@@ -971,7 +1225,8 @@ class _CartBottomSheet extends StatelessWidget {
               children: [
                 const Text('Keranjang',
                     style: TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.w700,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
                         color: PosColors.textPrimary)),
                 const Spacer(),
                 if (cart.isNotEmpty)
@@ -992,14 +1247,14 @@ class _CartBottomSheet extends StatelessWidget {
               child: Column(
                 children: [
                   _buildTextField(
-                      hint: 'Nama pemesan...',
-                      icon: Icons.person_outline_rounded,
+                      hint:      'Nama pemesan...',
+                      icon:      Icons.person_outline_rounded,
                       onChanged: onNameChanged),
                   const SizedBox(height: 10),
                   _buildTextField(
-                      hint: 'Catatan (opsional)...',
+                      hint:      'Catatan (opsional)...',
                       onChanged: onNoteChanged,
-                      maxLines: 2),
+                      maxLines:  2),
                   const SizedBox(height: 16),
                   ...List.generate(
                     cart.length,
@@ -1034,7 +1289,8 @@ class _CartBottomSheet extends StatelessWidget {
                               fontWeight: FontWeight.w700)),
                       Text(formatRp(total),
                           style: const TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w800,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
                               color: PosColors.primary)),
                     ],
                   ),
@@ -1116,16 +1372,14 @@ class _PaymentDialog extends StatefulWidget {
 }
 
 class _PaymentDialogState extends State<_PaymentDialog> {
-  String _metode   = 'Cash';
-  final _amountCtrl = TextEditingController();
-  bool _loading    = false;
-  int? _selectedAmount;
+  String _metode           = 'Cash';
+  final _amountCtrl         = TextEditingController();
+  bool _loading            = false;
 
   @override
   void initState() {
     super.initState();
     _amountCtrl.text = widget.total.toStringAsFixed(0);
-    _selectedAmount = widget.total.round();
   }
 
   @override
@@ -1138,10 +1392,8 @@ class _PaymentDialogState extends State<_PaymentDialog> {
       double.tryParse(
           _amountCtrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ??
       0;
-
   double get _kembalian =>
       (_bayar - widget.total).clamp(0, double.infinity);
-
   bool get _canPay =>
       _metode == 'QRIS' || _bayar >= widget.total;
 
@@ -1163,11 +1415,11 @@ class _PaymentDialogState extends State<_PaymentDialog> {
             children: [
               const Text('Pembayaran',
                   style: TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
                       color: PosColors.textPrimary,
                       letterSpacing: -0.4)),
               const SizedBox(height: 20),
-              // Total
               Container(
                 width:   double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -1182,17 +1434,18 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                     const SizedBox(height: 6),
                     Text(widget.formatRp(widget.total),
                         style: const TextStyle(
-                            fontSize: 26, fontWeight: FontWeight.w800,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
                             color: PosColors.primary,
                             letterSpacing: -0.5)),
                   ],
                 ),
               ),
               const SizedBox(height: 20),
-              // Metode
               const Text('Metode Pembayaran',
                   style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                       color: PosColors.textSecondary)),
               const SizedBox(height: 10),
               Row(
@@ -1201,8 +1454,8 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                   final label = m == 'Cash' ? 'Tunai' : 'QRIS';
                   return Expanded(
                     child: Padding(
-                      padding:
-                          EdgeInsets.only(right: m == 'Cash' ? 10 : 0),
+                      padding: EdgeInsets.only(
+                          right: m == 'Cash' ? 10 : 0),
                       child: GestureDetector(
                         onTap: () => setState(() => _metode = m),
                         child: AnimatedContainer(
@@ -1223,7 +1476,8 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                             ),
                           ),
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisAlignment:
+                                MainAxisAlignment.center,
                             children: [
                               Icon(
                                 m == 'Cash'
@@ -1237,7 +1491,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                               const SizedBox(width: 6),
                               Text(label,
                                   style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize:   13,
                                       fontWeight: FontWeight.w600,
                                       color: sel
                                           ? Colors.white
@@ -1251,11 +1505,11 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                 }).toList(),
               ),
               const SizedBox(height: 20),
-              // Tunai input
               if (_metode == 'Cash') ...[
                 const Text('Uang Diterima',
                     style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                         color: PosColors.textSecondary)),
                 const SizedBox(height: 8),
                 TextField(
@@ -1269,17 +1523,20 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                     fillColor:  PosColors.surface,
                     filled:     true,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(PosRadius.md),
+                      borderRadius:
+                          BorderRadius.circular(PosRadius.md),
                       borderSide:
                           const BorderSide(color: PosColors.border),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(PosRadius.md),
+                      borderRadius:
+                          BorderRadius.circular(PosRadius.md),
                       borderSide:
                           const BorderSide(color: PosColors.border),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(PosRadius.md),
+                      borderRadius:
+                          BorderRadius.circular(PosRadius.md),
                       borderSide: const BorderSide(
                           color: PosColors.primary, width: 2),
                     ),
@@ -1287,19 +1544,16 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                 ),
                 const SizedBox(height: 10),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 8, runSpacing: 8,
                   children: [5000, 10000, 20000, 50000, 100000]
                       .map((v) => GestureDetector(
-                            onTap: () => setState(() {
-  _selectedAmount = v;
-  _amountCtrl.text = v.toString();
-}),
+                            onTap: () => setState(
+                                () => _amountCtrl.text = v.toString()),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
-                                color:        PosColors.surfaceAlt,
+                                color: PosColors.surfaceAlt,
                                 borderRadius: BorderRadius.circular(
                                     PosRadius.md),
                                 border: Border.all(
@@ -1309,8 +1563,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                                   style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color:
-                                          PosColors.textSecondary)),
+                                      color: PosColors.textSecondary)),
                             ),
                           ))
                       .toList()
@@ -1321,7 +1574,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color:        PosColors.primaryBg,
+                          color: PosColors.primaryBg,
                           borderRadius:
                               BorderRadius.circular(PosRadius.md),
                           border: Border.all(
@@ -1336,7 +1589,6 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                     )),
                 ),
                 const SizedBox(height: 14),
-                // Kembalian
                 Container(
                   width:   double.infinity,
                   padding: const EdgeInsets.symmetric(
@@ -1345,8 +1597,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                     color: _bayar >= widget.total
                         ? PosColors.successBg
                         : PosColors.errorBg,
-                    borderRadius:
-                        BorderRadius.circular(PosRadius.md),
+                    borderRadius: BorderRadius.circular(PosRadius.md),
                     border: Border.all(
                       color: _bayar >= widget.total
                           ? const Color(0xFF9AE6B4)
@@ -1354,30 +1605,27 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                     ),
                   ),
                   child: Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
                         _bayar >= widget.total ? 'Kembalian' : 'Kurang',
                         style: TextStyle(
-                          fontSize:   13,
-                          fontWeight: FontWeight.w600,
-                          color: _bayar >= widget.total
-                              ? PosColors.success
-                              : PosColors.error,
-                        ),
+                            fontSize:   13,
+                            fontWeight: FontWeight.w600,
+                            color: _bayar >= widget.total
+                                ? PosColors.success
+                                : PosColors.error),
                       ),
                       Text(
                         _bayar >= widget.total
                             ? widget.formatRp(_kembalian)
                             : widget.formatRp(widget.total - _bayar),
                         style: TextStyle(
-                          fontSize:   15,
-                          fontWeight: FontWeight.w800,
-                          color: _bayar >= widget.total
-                              ? PosColors.success
-                              : PosColors.error,
-                        ),
+                            fontSize:   15,
+                            fontWeight: FontWeight.w800,
+                            color: _bayar >= widget.total
+                                ? PosColors.success
+                                : PosColors.error),
                       ),
                     ],
                   ),
@@ -1386,10 +1634,10 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color:        PosColors.infoBg,
+                    color: PosColors.infoBg,
                     borderRadius: BorderRadius.circular(PosRadius.md),
-                    border:
-                        Border.all(color: const Color(0xFF90CDF4)),
+                    border: Border.all(
+                        color: const Color(0xFF90CDF4)),
                   ),
                   child: Row(
                     children: const [
@@ -1440,7 +1688,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                           ? const SizedBox(
                               width: 18, height: 18,
                               child: CircularProgressIndicator(
-                                  color: Colors.white,
+                                  color:       Colors.white,
                                   strokeWidth: 2))
                           : Text(_metode == 'Cash'
                               ? 'Bayar Tunai'
@@ -1465,12 +1713,14 @@ class _StrukDialog extends StatelessWidget {
   final String invoiceNo;
   final String metode;
   final double total;
-  final List   items;
+  final List<Map<String, dynamic>> items;
   final double bayar;
   final double kembalian;
   final String pemesan;
   final String catatan;
   final String Function(double) formatRp;
+  final VoidCallback onPrint;
+  final bool isPrinting;
 
   const _StrukDialog({
     required this.invoiceNo,
@@ -1482,18 +1732,22 @@ class _StrukDialog extends StatelessWidget {
     required this.pemesan,
     required this.catatan,
     required this.formatRp,
+    required this.onPrint,
+    this.isPrinting = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final now          = DateTime.now();
-    final months       = ['Jan','Feb','Mar','Apr','Mei','Jun',
-                          'Jul','Agt','Sep','Okt','Nov','Des'];
-    final dateStr      =
+    final now        = DateTime.now();
+    final months     = [
+      'Jan','Feb','Mar','Apr','Mei','Jun',
+      'Jul','Agt','Sep','Okt','Nov','Des'
+    ];
+    final dateStr    =
         '${now.day} ${months[now.month - 1]} ${now.year}  '
-        '${now.hour.toString().padLeft(2,'0')}.'
-        '${now.minute.toString().padLeft(2,'0')}';
-    final methodLabel  = metode == 'Cash' ? 'Tunai' : metode;
+        '${now.hour.toString().padLeft(2, '0')}.'
+        '${now.minute.toString().padLeft(2, '0')}';
+    final methodLabel = metode == 'Cash' ? 'Tunai' : metode;
 
     return Dialog(
       backgroundColor: PosColors.surface,
@@ -1510,8 +1764,10 @@ class _StrukDialog extends StatelessWidget {
             children: [
               const Text('SEBLAK KACIDA',
                   style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w900,
-                      color: PosColors.textPrimary, letterSpacing: 1)),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: PosColors.textPrimary,
+                      letterSpacing: 1)),
               const SizedBox(height: 4),
               Text(dateStr,
                   style: const TextStyle(
@@ -1521,7 +1777,7 @@ class _StrukDialog extends StatelessWidget {
               const SizedBox(height: 8),
               _row('No. Order', invoiceNo, bold: true),
               const SizedBox(height: 6),
-              _row('Pemesan',   pemesan),
+              _row('Pemesan', pemesan),
               if (catatan.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 _row('Catatan', catatan),
@@ -1540,12 +1796,14 @@ class _StrukDialog extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${item['name']} x${item['qty']}',
+                            Text(
+                                '${item['name']} x${item['qty']}',
                                 style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                     color: PosColors.textPrimary)),
-                            Text(formatRp((item['price'] as num)
+                            Text(
+                                formatRp((item['price'] as num)
                                     .toDouble()),
                                 style: const TextStyle(
                                     fontSize: 11,
@@ -1555,7 +1813,8 @@ class _StrukDialog extends StatelessWidget {
                       ),
                       Text(formatRp(sub),
                           style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
                               color: PosColors.textPrimary)),
                     ],
                   ),
@@ -1564,19 +1823,39 @@ class _StrukDialog extends StatelessWidget {
               const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 8),
-              _row('Total',       formatRp(total),
+              _row('Total', formatRp(total),
                   bold: true, valueColor: PosColors.primary),
               const SizedBox(height: 6),
               _row('Bayar ($methodLabel)', formatRp(bayar)),
               const SizedBox(height: 6),
-              _row('Kembalian',   formatRp(kembalian),
+              _row('Kembalian', formatRp(kembalian),
                   bold: true, valueColor: PosColors.success),
               const SizedBox(height: 20),
-              const Text('Terima kasih sudah mampir! 🌶️',
+              const Text('Terima kasih sudah mampir!',
                   style: TextStyle(
                       fontSize: 13, color: PosColors.textSecondary),
                   textAlign: TextAlign.center),
               const SizedBox(height: 20),
+              // Tombol Cetak Struk
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: isPrinting ? null : onPrint,
+                  icon: isPrinting
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: PosColors.primary))
+                      : const Icon(Icons.print_rounded, size: 18),
+                  label: Text(isPrinting ? 'Mencetak...' : 'Cetak Struk'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: PosColors.primary,
+                    side: const BorderSide(color: PosColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -1601,7 +1880,7 @@ class _StrukDialog extends StatelessWidget {
                 fontSize: 13, color: PosColors.textSecondary)),
         Text(value,
             style: TextStyle(
-                fontSize: 13,
+                fontSize:   13,
                 fontWeight:
                     bold ? FontWeight.w700 : FontWeight.w500,
                 color: valueColor ?? PosColors.textPrimary)),
