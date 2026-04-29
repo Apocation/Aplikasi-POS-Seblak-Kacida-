@@ -55,7 +55,7 @@ class _DebugPageState extends State<DebugPage>
       final produk    = await DatabaseHelper.instance.getProducts();
       final transaksi = await DatabaseHelper.instance.getOrders();
 // SheetsService removed
-final pending = 0;
+const pending = 0;
 
 
       // Order items — query manual via db
@@ -388,8 +388,9 @@ final pending = 0;
         final p     = _produk[i];
         final stock = p['stock'] as int? ?? 0;
         final Color rowColor;
-        if (stock == 0)      rowColor = PosColors.errorBg;
-        else if (stock < 10) rowColor = PosColors.warningBg;
+        if (stock == 0) {
+          rowColor = PosColors.errorBg;
+        } else if (stock < 10) rowColor = PosColors.warningBg;
         else                 rowColor = PosColors.surface;
 
         return Container(

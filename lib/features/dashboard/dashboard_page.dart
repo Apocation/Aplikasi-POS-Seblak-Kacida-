@@ -207,14 +207,20 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _buildTopItems() {
     return _Panel(
-      icon:  '🔥',
+      icon: '🔥',
       title: 'Item Terlaris Hari Ini',
       child: _topItems.isEmpty
-          ? _empty('Belum ada transaksi hari ini')
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text('Belum ada transaksi hari ini',
+                    style: TextStyle(color: PosColors.textMuted, fontSize: 13)),
+              ),
+            )
           : Column(
               children: _topItems.map((item) => _TopItemRow(
                     name: item['item'] as String? ?? '-',
-                    qty:  '${item['terjual']} x',
+                    qty: '${item['terjual']} x',
                   )).toList(),
             ),
     );

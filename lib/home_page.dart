@@ -10,6 +10,7 @@ import 'features/transaksi/transaksi_page.dart';
 import 'features/laporan/laporan_page.dart';
 import 'features/setting/setting_page.dart';
 import 'features/debug/debug_page.dart';
+import 'core/services/data_notifier.dart';
 
 class HomePage extends StatefulWidget {
   final String userRole;
@@ -27,6 +28,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 1;
+  bool _sidebarCollapsed = false;
 
   bool get _isKasir => widget.userRole == 'kasir';
 
@@ -37,7 +39,7 @@ class _HomePageState extends State<HomePage> {
     const TransaksiPage(),
     const LaporanPage(),
     const SettingPage(),
-    const DebugPage(),   // index 6
+    const DebugPage(),
   ];
 
   late final List<Widget> _kasirPages = [
@@ -51,7 +53,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    // Sheets service disabled
   }
 
   String get _pageTitle {
@@ -78,6 +79,14 @@ class _HomePageState extends State<HomePage> {
   void _onMenuTap(int index) {
     if (index >= _pages.length) return;
     setState(() => _selectedIndex = index);
+    DataNotifier.notify();
+  }
+
+  // FUNGSI TOGGLE SIDEBAR - TAMBAHKAN INI
+  void _toggleSidebar() {
+    setState(() {
+      _sidebarCollapsed = !_sidebarCollapsed;
+    });
   }
 
   void _logout() {
@@ -102,22 +111,29 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: PosColors.background,
-      appBar:  isMobile ? _buildAppBar() : null,
-      drawer:  isMobile ? _buildDrawer()  : null,
+      appBar: _buildAppBar(),
+      drawer: isMobile ? _buildDrawer() : null,
       body: Row(
         children: [
           if (!isMobile)
-            Sidebar(
-              selectedIndex: _selectedIndex,
-              onMenuTap:     _onMenuTap,
-              userRole:      widget.userRole,
-              username:      widget.username,
-              onLogout:      _logout,
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              width: _sidebarCollapsed ? 70 : 180, // Lebar sidebar 180px
+              child: Sidebar(
+                selectedIndex: _selectedIndex,
+                onMenuTap: _onMenuTap,
+                userRole: widget.userRole,
+                username: widget.username,
+                onLogout: _logout,
+                customWidth: _sidebarCollapsed ? 70 : 180,
+                isCollapsed: _sidebarCollapsed,
+                onToggleCollapse: _toggleSidebar, // Kirim fungsi toggle
+              ),
             ),
           Expanded(
             child: ClipRect(
               child: IndexedStack(
-                index:    _selectedIndex.clamp(0, _pages.length - 1),
+                index: _selectedIndex.clamp(0, _pages.length - 1),
                 children: _pages,
               ),
             ),
@@ -128,15 +144,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   PreferredSizeWidget _buildAppBar() {
+    final isMobile = Responsive.isMobile(context);
     return AppBar(
       backgroundColor: PosColors.surface,
       elevation: 0,
       scrolledUnderElevation: 0,
       leading: Builder(
         builder: (ctx) => IconButton(
-          icon: const Icon(Icons.menu_rounded,
-              color: PosColors.textPrimary, size: 24),
-          onPressed: () => Scaffold.of(ctx).openDrawer(),
+          icon: Icon(
+            _sidebarCollapsed ? Icons.chevron_right_rounded : Icons.chevron_left_rounded,
+            color: PosColors.textPrimary,
+            size: 24,
+          ),
+          onPressed: isMobile
+              ? () => Scaffold.of(ctx).openDrawer()
+              : () => _toggleSidebar(), // Pakai fungsi toggle
         ),
       ),
       title: Row(
@@ -145,23 +167,30 @@ class _HomePageState extends State<HomePage> {
             borderRadius: BorderRadius.circular(PosRadius.sm),
             child: Image.asset(
               'assets/images/logo/logo_usaha.jpg',
-              width: 28, height: 28, fit: BoxFit.cover,
+              width: 28,
+              height: 28,
+              fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Container(
-                width: 28, height: 28,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
-                  color:        PosColors.primary,
+                  color: PosColors.primary,
                   borderRadius: BorderRadius.circular(PosRadius.sm),
                 ),
-                child: const Icon(Icons.restaurant,
-                    color: Colors.white, size: 16),
+                child: const Icon(Icons.restaurant, color: Colors.white, size: 16),
               ),
             ),
           ),
           const SizedBox(width: 10),
-          Text(_pageTitle,
-              style: const TextStyle(
-                  fontSize: 17, fontWeight: FontWeight.w700,
-                  color: PosColors.textPrimary, letterSpacing: -0.3)),
+          Text(
+            _pageTitle,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: PosColors.textPrimary,
+              letterSpacing: -0.3,
+            ),
+          ),
         ],
       ),
       bottom: PreferredSize(
@@ -187,6 +216,8 @@ class _HomePageState extends State<HomePage> {
           Navigator.of(context).pop();
           _logout();
         },
+        customWidth: 240,
+        isCollapsed: false,
       ),
     );
   }
@@ -198,73 +229,72 @@ class _LogoutDialog extends StatelessWidget {
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
 
-  const _LogoutDialog(
-      {required this.onConfirm, required this.onCancel});
+  const _LogoutDialog({
+    required this.onConfirm,
+    required this.onCancel,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: PosColors.surface,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(PosRadius.xl)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PosRadius.xl)),
       child: Padding(
         padding: const EdgeInsets.all(PosSpacing.lg),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 56, height: 56,
+              width: 56,
+              height: 56,
               decoration: BoxDecoration(
-                color:        PosColors.errorBg,
+                color: PosColors.errorBg,
                 borderRadius: BorderRadius.circular(PosRadius.xl),
               ),
-              child: const Icon(Icons.logout_rounded,
-                  color: PosColors.primary, size: 28),
+              child: const Icon(Icons.logout_rounded, color: PosColors.primary, size: 28),
             ),
             const SizedBox(height: PosSpacing.md),
-            const Text('Keluar dari Akun?',
-                style: TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.w700,
-                    color: PosColors.textPrimary,
-                    letterSpacing: -0.3)),
+            const Text(
+              'Keluar dari Akun?',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: PosColors.textPrimary,
+                letterSpacing: -0.3,
+              ),
+            ),
             const SizedBox(height: 6),
             const Text(
               'Anda akan keluar dari sesi ini.\nPastikan semua transaksi sudah selesai.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13, color: PosColors.textSecondary,
-                  height: 1.5),
+              style: TextStyle(fontSize: 13, color: PosColors.textSecondary, height: 1.5),
             ),
             const SizedBox(height: PosSpacing.lg),
-            Row(children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onCancel,
-                  style: OutlinedButton.styleFrom(
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 13),
-                      side: const BorderSide(color: PosColors.border)),
-                  child: const Text('Batal',
-                      style: TextStyle(
-                          color: PosColors.textSecondary,
-                          fontWeight: FontWeight.w600)),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onCancel,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      side: const BorderSide(color: PosColors.border),
+                    ),
+                    child: const Text('Batal', style: TextStyle(color: PosColors.textSecondary, fontWeight: FontWeight.w600)),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: onConfirm,
-                  style: ElevatedButton.styleFrom(
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: onConfirm,
+                    style: ElevatedButton.styleFrom(
                       backgroundColor: PosColors.primary,
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 13)),
-                  child: const Text('Keluar',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600)),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                    ),
+                    child: const Text('Keluar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  ),
                 ),
-              ),
-            ]),
+              ],
+            ),
           ],
         ),
       ),

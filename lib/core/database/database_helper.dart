@@ -1,12 +1,13 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:uuid/uuid.dart';
-import '../services/firebase_service.dart';
+import '../services/data_notifier.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
   static const _uuid = Uuid();
+  
 
   DatabaseHelper._init();
 
@@ -22,9 +23,21 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // Update version karena ada perubahan struktur
       onCreate: _createDB,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Tambah kolom customer_name jika belum ada
+      try {
+        await db.execute('ALTER TABLE orders ADD COLUMN customer_name TEXT DEFAULT "Pelanggan"');
+      } catch (e) {
+        print('Error upgrading database: $e');
+      }
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -53,13 +66,17 @@ class DatabaseHelper {
     )
     ''');
 
-    // ORDERS (Header Transaksi)
+    // ORDERS (Header Transaksi) - dengan customer_name
     await db.execute('''
     CREATE TABLE orders (
       id TEXT PRIMARY KEY,
+      customer_name TEXT DEFAULT 'Pelanggan',
+      note TEXT DEFAULT '',
       total_price REAL NOT NULL,
       payment_method TEXT NOT NULL CHECK(payment_method IN ('Cash', 'QRIS')),
       status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Paid', 'Pending')),
+      amount_paid REAL DEFAULT 0,      -- Uang yang dibayar
+      change_amount REAL DEFAULT 0,     -- Kembalian
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
     ''');
@@ -142,6 +159,8 @@ class DatabaseHelper {
       {'name': 'Level 3', 'category': 'Pedas', 'price': 0.0, 'stock': 999, 'image_url': ''},
       {'name': 'Level 4', 'category': 'Pedas', 'price': 0.0, 'stock': 999, 'image_url': ''},
       {'name': 'Level 5', 'category': 'Pedas', 'price': 0.0, 'stock': 999, 'image_url': ''},
+      // ── MINUMAN ──────────────────────────────────────────────
+      {'name': 'Es Teh', 'category': 'Minuman', 'price': 5000.0, 'stock': 100, 'image_url': ''},
     ];
  
     for (var product in products) {
@@ -194,7 +213,9 @@ class DatabaseHelper {
   Future<int> updateProduct(String id, Map<String, dynamic> data) async {
     final db = await instance.database;
     data['updated_at'] = DateTime.now().toIso8601String();
-    return await db.update('products', data, where: 'id = ?', whereArgs: [id]);
+    final result = await db.update('products', data, where: 'id = ?', whereArgs: [id]);
+    DataNotifier.notify(); // TAMBAHKAN INI
+    return result;
   }
 
   Future<int> deleteProduct(String id) async {
@@ -210,6 +231,7 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [productId],
     );
+    DataNotifier.notify();
     return result;
   }
 
@@ -224,13 +246,62 @@ class DatabaseHelper {
   }
 
   // ==================== ORDERS METHODS ====================
-  Future<String> createOrder(Map<String, dynamic> orderData) async {
+  
+  // CREATE ORDER dengan customer_name
+  Future<String> createOrder({
+    required double totalPrice,
+    required String paymentMethod,
+    required String status,
+    String customerName = 'Pelanggan',
+    String note = '',
+    double amountPaid = 0,
+    double changeAmount = 0,
+  }) async {
+    final db = await instance.database;
+    final id = _uuid.v4();
+    await db.insert('orders', {
+      'id': id,
+      'customer_name': customerName,
+      'note': note,
+      'total_price': totalPrice,
+      'payment_method': paymentMethod,
+      'status': status,
+      'amount_paid': amountPaid,
+      'change_amount': changeAmount,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    return id;
+  }
+
+  // Untuk kompatibilitas dengan kode lama (parameter Map)
+  Future<String> createOrderWithMap(Map<String, dynamic> orderData) async {
     final db = await instance.database;
     final id = _uuid.v4();
     orderData['id'] = id;
     orderData['created_at'] = DateTime.now().toIso8601String();
+    
+    // Pastikan customer_name ada
+    if (!orderData.containsKey('customer_name') || orderData['customer_name'] == null || orderData['customer_name'].toString().isEmpty) {
+      orderData['customer_name'] = 'Pelanggan';
+    }
+    
+    // Pastikan note ada
+    if (!orderData.containsKey('note')) {
+      orderData['note'] = '';
+    }
+    
     await db.insert('orders', orderData);
     return id;
+  }
+
+  Future<int> updateOrderCustomerName(String orderId, String customerName) async {
+    final db = await instance.database;
+    return await db.update(
+      'orders',
+      {'customer_name': customerName},
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
   }
 
   Future<List<Map<String, dynamic>>> getOrders() async {
@@ -242,6 +313,18 @@ class DatabaseHelper {
     final db = await instance.database;
     final result = await db.query('orders', where: 'id = ?', whereArgs: [id]);
     return result.isNotEmpty ? result.first : null;
+  }
+
+  // Ambil order dengan customer_name
+  Future<Map<String, dynamic>> getOrderWithCustomer(String orderId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'orders',
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+    if (result.isEmpty) return {};
+    return result.first;
   }
 
   Future<int> updateOrderStatus(String id, String status) async {
@@ -495,29 +578,48 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getTopSellingProducts({int limit = 10}) async {
     final db = await instance.database;
-    return await db.rawQuery('''
-      SELECT p.name AS item, SUM(oi.quantity) AS terjual, SUM(oi.subtotal) AS pendapatan
+    
+    final result = await db.rawQuery('''
+      SELECT 
+        p.name AS item, 
+        SUM(oi.quantity) AS terjual,
+        SUM(oi.subtotal) AS pendapatan
       FROM order_items oi
-      LEFT JOIN products p ON p.id = oi.product_id
+      INNER JOIN products p ON p.id = oi.product_id
+      INNER JOIN orders o ON o.id = oi.order_id
+      WHERE o.status = 'Paid'
       GROUP BY oi.product_id
       ORDER BY terjual DESC
       LIMIT ?
     ''', [limit]);
+    
+    print('Top products all time: $result'); // Debug
+    
+    return result;
   }
 
   Future<List<Map<String, dynamic>>> getTopSellingProductsToday({int limit = 5}) async {
     final db = await instance.database;
     final today = DateTime.now().toIso8601String().split('T')[0];
-    return await db.rawQuery('''
-      SELECT p.name AS item, SUM(oi.quantity) AS terjual
+    
+    final result = await db.rawQuery('''
+      SELECT 
+        p.name AS item, 
+        SUM(oi.quantity) AS terjual,
+        SUM(oi.subtotal) AS pendapatan
       FROM order_items oi
-      LEFT JOIN products p ON p.id = oi.product_id
-      LEFT JOIN orders o ON o.id = oi.order_id
-      WHERE o.status = "Paid" AND DATE(o.created_at) = ?
+      INNER JOIN products p ON p.id = oi.product_id
+      INNER JOIN orders o ON o.id = oi.order_id
+      WHERE o.status = 'Paid' 
+        AND DATE(o.created_at) = DATE(?)
       GROUP BY oi.product_id
       ORDER BY terjual DESC
       LIMIT ?
     ''', [today, limit]);
+    
+    print('Top products today: $result'); // Debug
+    
+    return result;
   }
 
   Future<List<Map<String, dynamic>>> getLowStockProducts({int threshold = 10}) async {

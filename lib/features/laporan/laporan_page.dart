@@ -381,13 +381,13 @@ class _LaporanPageState extends State<LaporanPage>
           show: true,
           drawVerticalLine: false,
           horizontalInterval: interval,
-          getDrawingHorizontalLine: (_) => FlLine(
+          getDrawingHorizontalLine: (_) => const FlLine(
               color: PosColors.border, strokeWidth: 1,
               dashArray: [4, 4]),
         ),
         borderData: FlBorderData(
           show: true,
-          border: Border(
+          border: const Border(
             bottom: BorderSide(color: PosColors.border, width: 1),
             left:   BorderSide(color: PosColors.border, width: 1),
           ),
@@ -427,9 +427,9 @@ class _LaporanPageState extends State<LaporanPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-            child: Row(children: const [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 18, 20, 14),
+            child: Row(children: [
               Text('🏆 ', style: TextStyle(fontSize: 18)),
               Text('Item Terlaris (Semua Waktu)',
                   style: TextStyle(

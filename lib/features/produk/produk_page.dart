@@ -33,6 +33,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
     {'label': 'Topping',    'db': 'Topping','emoji': '🥩'},
     {'label': 'Sayur',      'db': 'Sayur',  'emoji': '🥬'},
     {'label': 'Level Pedas','db': 'Pedas',  'emoji': '🌶️'},
+    {'label': 'Minuman', 'db': 'Minuman', 'emoji': '🥤'},
   ];
 
   @override
@@ -69,6 +70,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
       case 'Topping': return 'Topping';
       case 'Sayur':   return 'Sayur';
       case 'Pedas':   return 'Level Pedas';
+      case 'Minuman': return 'Minuman';
       default:        return dbCat;
     }
   }
@@ -79,6 +81,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
       case 'Topping': return '🥩';
       case 'Sayur':   return '🥬';
       case 'Pedas':   return '🌶️';
+      case 'Minuman': return '🥤';  
       default:        return '🍽️';
     }
   }
@@ -89,6 +92,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
       builder: (_) => _ProdukFormDialog(
         onSave: (data) async {
           await DatabaseHelper.instance.insertProduct(data);
+          DataNotifier.notify();
           _load();
         },
       ),
@@ -101,8 +105,8 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
       builder: (_) => _ProdukFormDialog(
         existing: produk,
         onSave: (data) async {
-          await DatabaseHelper.instance.updateProduct(
-              produk['id'] as String, data);
+          await DatabaseHelper.instance.updateProduct(produk['id'] as String, data);
+          DataNotifier.notify();
           _load();
         },
       ),
@@ -115,6 +119,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
       produk['id'] as String,
       {'stock': stock > 0 ? 0 : 10},
     );
+    DataNotifier.notify();
     _load();
   }
 
@@ -130,6 +135,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
               .deleteIfLocal(produk['image_url'] as String?);
           await DatabaseHelper.instance
               .deleteProduct(produk['id'] as String);
+          DataNotifier.notify();
           _load();
         },
         onCancel: () => Navigator.pop(ctx),
@@ -175,7 +181,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: const [
+                const Row(children: [
                   Text('📦 ', style: TextStyle(fontSize: 22)),
                   Text('Produk',
                       style: TextStyle(
@@ -270,9 +276,9 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
             Container(
               padding: const EdgeInsets.symmetric(
                   horizontal: 20, vertical: 14),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: PosColors.surfaceAlt,
-                borderRadius: const BorderRadius.only(
+                borderRadius: BorderRadius.only(
                   topLeft:  Radius.circular(PosRadius.lg),
                   topRight: Radius.circular(PosRadius.lg),
                 ),
@@ -787,25 +793,27 @@ class _ProdukFormDialogState extends State<_ProdukFormDialog> {
     );
   }
 
+  // Di _ProdukFormDialogState, ubah _save method:
   Future<void> _save() async {
-    if (_namaCtrl.text.trim().isEmpty ||
-        _hargaCtrl.text.trim().isEmpty) {
+    if (_namaCtrl.text.trim().isEmpty || _hargaCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Nama dan harga wajib diisi'),
-          backgroundColor: PosColors.error,
-        ),
+        const SnackBar(content: Text('Nama dan harga wajib diisi'), backgroundColor: PosColors.error),
       );
       return;
     }
     setState(() => _saving = true);
+    
+    // Jika kategori Pedas, set stok besar dan hapus foto
+    final isPedas = _kategori == 'Pedas';
+    
     await widget.onSave({
-      'name':      _namaCtrl.text.trim(),
-      'category':  _kategori,
-      'price':     double.tryParse(_hargaCtrl.text) ?? 0.0,
-      'stock':     int.tryParse(_stokCtrl.text) ?? 0,
-      'image_url': _kategori == 'Pedas' ? '' : _imageUrl,
+      'name': _namaCtrl.text.trim(),
+      'category': _kategori,
+      'price': double.tryParse(_hargaCtrl.text) ?? 0.0,
+      'stock': isPedas ? 999999 : (int.tryParse(_stokCtrl.text) ?? 0), // Unlimited untuk pedas
+      'image_url': isPedas ? '' : _imageUrl, // No foto untuk pedas
     });
+    
     if (!mounted) return;
     Navigator.pop(context);
   }
@@ -893,7 +901,7 @@ class _ProdukFormDialogState extends State<_ProdukFormDialog> {
                         horizontal: 14),
                     borderRadius:
                         BorderRadius.circular(PosRadius.md),
-                    items: ['Base', 'Topping', 'Sayur', 'Pedas']
+                    items: ['Base', 'Topping', 'Sayur', 'Pedas', 'Minuman']
                         .map((k) => DropdownMenuItem(
                               value: k,
                               child: Text(k,
@@ -951,8 +959,8 @@ class _ProdukFormDialogState extends State<_ProdukFormDialog> {
                     border: Border.all(
                         color: const Color(0xFFFDE68A)),
                   ),
-                  child: Row(
-                    children: const [
+                  child: const Row(
+                    children: [
                       Icon(Icons.info_outline_rounded,
                           size: 16, color: PosColors.warning),
                       SizedBox(width: 8),
@@ -1020,9 +1028,9 @@ class _ProdukFormDialogState extends State<_ProdukFormDialog> {
               color: Colors.black.withValues(alpha: 0.55),
               borderRadius: BorderRadius.circular(PosRadius.md),
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
-              children: const [
+              children: [
                 Icon(Icons.edit_rounded,
                     color: Colors.white, size: 13),
                 SizedBox(width: 4),
@@ -1039,9 +1047,9 @@ class _ProdukFormDialogState extends State<_ProdukFormDialog> {
   }
 
   Widget _imagePlaceholder() {
-    return Column(
+    return const Column(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: const [
+      children: [
         Icon(Icons.add_photo_alternate_rounded,
             size: 40, color: PosColors.textMuted),
         SizedBox(height: 10),

@@ -6,8 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'core/services/firebase_service.dart';
 import 'core/services/permission_service.dart';
 import 'firebase_options.dart';
-import 'theme.dart';
 import 'features/auth/login_page.dart';
+import 'core/services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,12 +56,20 @@ class SeblakPOSApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Seblak Kacida',
-      theme: posTheme,
-      home: const SplashScreen(),
-    );
+      return FutureBuilder<bool>(
+        future: ThemeService.isDarkMode(),
+        builder: (context, snapshot) {
+          final isDark = snapshot.data ?? false;
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'Seblak Kacida',
+            theme: ThemeService.getLightTheme(),
+            darkTheme: ThemeService.getDarkTheme(),
+            themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+            home: const SplashScreen(),
+          );
+        },
+      );
   }
 }
 

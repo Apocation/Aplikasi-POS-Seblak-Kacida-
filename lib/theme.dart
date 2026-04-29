@@ -128,7 +128,7 @@ final posTheme = ThemeData(
   ),
 
   // Card
-  cardTheme: CardThemeData(
+  cardTheme: const CardThemeData(
     color: PosColors.surface,
     elevation: 0,
     shape: RoundedRectangleBorder(
@@ -144,7 +144,7 @@ final posTheme = ThemeData(
     style: ElevatedButton.styleFrom(
       backgroundColor: PosColors.primary,
       foregroundColor: Colors.white,
-      disabledBackgroundColor: Color(0xFFE2E8F0),
+      disabledBackgroundColor: const Color(0xFFE2E8F0),
       disabledForegroundColor: PosColors.textMuted,
       elevation: 0,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),

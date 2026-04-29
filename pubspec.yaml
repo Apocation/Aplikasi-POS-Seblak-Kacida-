@@ -15,6 +15,7 @@ dependencies:
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0
   path: ^1.8.3
+  share_plus: ^10.0.0
   
   # UI
   fl_chart: ^0.68.0
@@ -44,6 +45,7 @@ dependencies:
   # Ikon
   flutter_launcher_icons: ^0.13.1
 
+  sqflite_common: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

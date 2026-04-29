@@ -6,6 +6,7 @@ import '../../core/utils/responsive.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/services/data_notifier.dart';
 import '../../core/services/printer_service.dart';
+import '../../core/services/firebase_service.dart';
 
 class KasirPage extends StatefulWidget {
   const KasirPage({super.key});
@@ -15,23 +16,27 @@ class KasirPage extends StatefulWidget {
 }
 
 class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
-  String _kategori    = 'Base Seblak';
+  String _kategori = 'Base Seblak';
   String _namaPemesan = '';
-  String _catatan     = '';
+  String _catatan = '';
   final List<Map<String, dynamic>> _cart = [];
   List<Map<String, dynamic>> _produkList = [];
   bool _loadingProduk = true;
 
   // Printer related
-  bool _isPrinterConnected  = false;
+  bool _isPrinterConnected = false;
   String? _connectedPrinterName;
   bool _isPrinting = false;
 
+  // Tablet: lebar keranjang
+  final double _cartWidth = 280;
+
   static const List<Map<String, String>> _categories = [
-    {'label': 'Base Seblak', 'db': 'Base',   'emoji': '🍜'},
-    {'label': 'Topping',     'db': 'Topping', 'emoji': '🥩'},
-    {'label': 'Sayur',       'db': 'Sayur',   'emoji': '🥬'},
-    {'label': 'Level Pedas', 'db': 'Pedas',   'emoji': '🌶️'},
+    {'label': 'Base Seblak', 'db': 'Base', 'emoji': '🍜'},
+    {'label': 'Topping', 'db': 'Topping', 'emoji': '🥩'},
+    {'label': 'Sayur', 'db': 'Sayur', 'emoji': '🥬'},
+    {'label': 'Level Pedas', 'db': 'Pedas', 'emoji': '🌶️'},
+    {'label': 'Minuman', 'db': 'Minuman', 'emoji': '🥤'},
   ];
 
   @override
@@ -41,62 +46,24 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
     _checkPrinterStatus();
   }
 
-  // Cek status koneksi printer saat halaman dibuka
   Future<void> _checkPrinterStatus() async {
-    final connected = await PrinterService.checkConnection();
+    final connected = await PrinterService.autoReconnect();
     if (mounted) {
       setState(() {
-        _isPrinterConnected   = connected;
+        _isPrinterConnected = connected;
         _connectedPrinterName = PrinterService.connectedPrinter;
       });
     }
   }
 
-  // Tampilkan dialog pilih printer & konek
   Future<void> _connectToPrinter() async {
-    // Kalau sudah konek, tawarkan disconnect
-    if (_isPrinterConnected) {
-      final shouldDisconnect = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Printer Terhubung'),
-          content: Text(
-              'Sedang terhubung ke ${_connectedPrinterName ?? "Printer"}.\nPutuskan koneksi?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Tidak'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: PosColors.error),
-              child: const Text('Putuskan'),
-            ),
-          ],
-        ),
-      );
-      if (shouldDisconnect == true) {
-        await PrinterService.disconnect();
-        if (mounted) {
-          setState(() {
-            _isPrinterConnected   = false;
-            _connectedPrinterName = null;
-          });
-        }
-      }
-      return;
-    }
-
-    // Ambil daftar printer yang sudah di-pair
     final devices = await PrinterService.getBondedDevices();
 
     if (devices.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-                'Tidak ada printer Bluetooth yang di-pair. Silakan pair dulu di pengaturan HP.'),
+            content: Text('Tidak ada printer yang di-pair. Pair dulu di pengaturan HP.'),
             backgroundColor: PosColors.error,
           ),
         );
@@ -116,20 +83,15 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
             shrinkWrap: true,
             itemCount: devices.length,
             itemBuilder: (context, index) {
-              // devices adalah List<Map<String, dynamic>>
-              // dengan key 'name' dan 'address'
               final device = devices[index];
-              final name    = device['name'] as String? ?? 'Unknown';
+              final name = device['name'] as String? ?? 'Unknown';
               final address = device['address'] as String? ?? '';
-
               return ListTile(
                 leading: const Icon(Icons.print),
-                title:    Text(name),
+                title: Text(name),
                 subtitle: Text(address),
                 onTap: () async {
                   Navigator.pop(context);
-
-                  // Tampilkan loading
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -138,34 +100,18 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
                       ),
                     );
                   }
-
-                  // Connect — butuh macAddress dan printerName
-                  final success = await PrinterService.connect(
-                    address,
-                    name,
-                  );
-
+                  final success = await PrinterService.connect(address, name);
                   if (mounted) {
-                    if (success) {
-                      setState(() {
-                        _isPrinterConnected   = true;
-                        _connectedPrinterName = name;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Terhubung ke $name'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Gagal terhubung ke printer. Pastikan printer menyala.'),
-                          backgroundColor: PosColors.error,
-                        ),
-                      );
-                    }
+                    setState(() {
+                      _isPrinterConnected = success;
+                      _connectedPrinterName = name;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(success ? 'Terhubung ke $name' : 'Gagal terhubung ke printer'),
+                        backgroundColor: success ? Colors.green : PosColors.error,
+                      ),
+                    );
                   }
                 },
               );
@@ -182,7 +128,6 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
     );
   }
 
-  // Cetak struk
   Future<void> _printReceipt({
     required String orderId,
     required String metode,
@@ -193,15 +138,13 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
     required String catatan,
     required List<Map<String, dynamic>> items,
   }) async {
-    // Kalau belum konek, tawarkan konek dulu
     if (!_isPrinterConnected) {
       if (mounted) {
         final shouldConnect = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Printer Belum Terhubung'),
-            content:
-                const Text('Hubungkan ke printer Bluetooth terlebih dahulu?'),
+            content: const Text('Hubungkan ke printer Bluetooth terlebih dahulu?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -209,8 +152,7 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: PosColors.primary),
+                style: ElevatedButton.styleFrom(backgroundColor: PosColors.primary),
                 child: const Text('Ya, Hubungkan'),
               ),
             ],
@@ -228,20 +170,19 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
     try {
       final success = await PrinterService.printReceipt(
         invoiceNo: orderId,
-        pemesan:   pemesan.isEmpty ? 'Pelanggan' : pemesan,
-        metode:    metode,
-        total:     total,
-        bayar:     bayar,
+        pemesan: pemesan.isEmpty ? 'Pelanggan' : pemesan,
+        metode: metode,
+        total: total,
+        bayar: bayar,
         kembalian: kembalian,
-        items:     items,
-        catatan:   catatan,
+        items: items,
+        catatan: catatan,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                success ? 'Struk berhasil dicetak!' : 'Gagal mencetak struk.'),
+            content: Text(success ? 'Struk berhasil dicetak!' : 'Gagal mencetak struk. Periksa koneksi printer.'),
             backgroundColor: success ? Colors.green : PosColors.error,
           ),
         );
@@ -260,7 +201,6 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
     }
   }
 
-  // DataRefreshMixin
   @override
   void onDataChanged() => _loadProduk();
 
@@ -268,19 +208,16 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
     final data = await DatabaseHelper.instance.getProducts();
     if (!mounted) return;
     setState(() {
-      _produkList    = data;
+      _produkList = data;
       _loadingProduk = false;
     });
   }
 
   List<Map<String, dynamic>> get _filteredProduk {
-    final dbCat = _categories.firstWhere(
-      (c) => c['label'] == _kategori,
-      orElse: () => {'db': _kategori},
-    )['db']!;
+    final dbCat = _categories
+        .firstWhere((c) => c['label'] == _kategori, orElse: () => {'db': _kategori})['db']!;
     return _produkList
-        .where((p) =>
-            p['category'] == dbCat && (p['stock'] as int? ?? 0) > 0)
+        .where((p) => p['category'] == dbCat && (p['stock'] as int? ?? 0) > 0)
         .toList();
   }
 
@@ -289,21 +226,21 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
         (s, e) => s + (e['price'] as num).toDouble() * (e['qty'] as int),
       );
 
-  String _formatRp(double val) => 'Rp ${val.toStringAsFixed(0).replaceAllMapped(
-        RegExp(r'\B(?=(\d{3})+(?!\d))'),
-        (_) => '.',
-      )}';
+  String _formatRp(double val) =>
+      'Rp ${val.toStringAsFixed(0).replaceAllMapped(
+            RegExp(r'\B(?=(\d{3})+(?!\d))'),
+            (_) => '.',
+          )}';
 
   String _invoiceNo(String orderId) {
-    final now    = DateTime.now();
-    final d      = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-    final suffix = orderId.length >= 4
-        ? orderId.substring(orderId.length - 4).toUpperCase()
-        : orderId.toUpperCase();
+    final now = DateTime.now();
+    final d = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final suffix = orderId.length >= 4 ? orderId.substring(orderId.length - 4).toUpperCase() : orderId.toUpperCase();
     return 'ORD-$d-$suffix';
   }
 
-  // ── Cart ──────────────────────────────────────────────────
+  // ==================== CART METHODS ====================
+  
   void _addToCart(Map<String, dynamic> item) {
     setState(() {
       final i = _cart.indexWhere((e) => e['id'] == item['id']);
@@ -327,33 +264,48 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
   }
 
   void _removeItem(int i) => setState(() => _cart.removeAt(i));
-  void _clearCart()       => setState(() => _cart.clear());
+  void _clearCart() => setState(() => _cart.clear());
 
-  // ── Payment ───────────────────────────────────────────────
+  // ==================== PAYMENT ====================
+  
   void _showPaymentDialog() {
     if (_cart.isEmpty) return;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => _PaymentDialog(
-        total:    _total,
+        total: _total,
         formatRp: _formatRp,
-        onPay:    _prosesBayar,
+        onPay: _prosesBayar,
       ),
     );
   }
 
   Future<void> _prosesBayar(String metode, double bayar) async {
+    // Tutup dialog payment dulu
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.of(context).pop();
+    }
+
     try {
       final totalHarga = _total;
-      final tempCart   = List<Map<String, dynamic>>.from(_cart);
-      final pemesan    = _namaPemesan.trim();
-      final catatan    = _catatan.trim();
+      final tempCart = List<Map<String, dynamic>>.from(_cart);
+      final pemesan = _namaPemesan.trim();
+      final catatan = _catatan.trim();
+
+      if (tempCart.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Keranjang kosong!'), backgroundColor: PosColors.error),
+          );
+        }
+        return;
+      }
 
       // Validasi stok
       for (final item in tempCart) {
         final stok = item['stock'] as int? ?? 0;
-        final qty  = item['qty']   as int;
+        final qty = item['qty'] as int;
         if (qty > stok) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -365,21 +317,29 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
         }
       }
 
+      // DEKLARASIKAN KEMBALIAN SEBELUM DIGUNAKAN
+      final kembalian = metode == 'Cash'
+          ? (bayar - totalHarga).clamp(0, double.infinity).toDouble()
+          : 0.0;
+
       // Buat order
-      final orderId = await DatabaseHelper.instance.createOrder({
-        'total_price':    totalHarga,
-        'payment_method': metode,
-        'status':         'Paid',
-      });
+      final orderId = await DatabaseHelper.instance.createOrder(
+        totalPrice: totalHarga,
+        paymentMethod: metode,
+        status: 'Paid',
+        customerName: pemesan.isEmpty ? 'Pelanggan' : pemesan,
+        note: catatan,
+        amountPaid: bayar,
+        changeAmount: kembalian,
+      );
 
       // Tambah items + kurangi stok
       for (final item in tempCart) {
         await DatabaseHelper.instance.addOrderItem({
-          'order_id':   orderId,
+          'order_id': orderId,
           'product_id': item['id'],
-          'quantity':   item['qty'],
-          'subtotal':
-              (item['price'] as num).toDouble() * (item['qty'] as int),
+          'quantity': item['qty'],
+          'subtotal': (item['price'] as num).toDouble() * (item['qty'] as int),
         });
         await DatabaseHelper.instance.updateProductStock(
           item['id'],
@@ -389,30 +349,27 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
 
       DataNotifier.notify();
 
-      final kembalian = metode == 'Cash'
-          ? (bayar - totalHarga).clamp(0, double.infinity).toDouble()
-          : 0.0;
-
       if (!mounted) return;
-      Navigator.of(context).pop();
-      setState(() => _cart.clear());
+      
+      // Clear cart
+      setState(() {
+        _cart.clear();
+        _namaPemesan = '';
+        _catatan = '';
+      });
 
-      _showStruk(
-        orderId,
-        metode,
-        totalHarga,
-        tempCart,
-        bayar,
-        kembalian,
-        pemesan,
-        catatan,
-      );
+      // Tampilkan struk
+      _showStruk(orderId, metode, totalHarga, tempCart, bayar, kembalian, pemesan, catatan);
+      
     } catch (e) {
+      debugPrint('Error proses bayar: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: PosColors.error,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString().substring(0, e.toString().length > 100 ? 100 : e.toString().length)}'),
+            backgroundColor: PosColors.error,
+          ),
+        );
       }
     }
   }
@@ -428,94 +385,98 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
     String catatan,
   ) {
     final invoiceNo = _invoiceNo(orderId);
+    
+    // Tampilkan dialog tanpa barrierDismissible: false biar bisa ditutup
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true, // Ubah jadi true biar bisa ditutup dengan tap luar
       builder: (_) => _StrukDialog(
         invoiceNo: invoiceNo,
-        metode:    metode,
-        total:     total,
-        items:     items,
-        bayar:     bayar,
+        metode: metode,
+        total: total,
+        items: items,
+        bayar: bayar,
         kembalian: kembalian,
-        pemesan:   pemesan.isEmpty ? 'Pelanggan' : pemesan,
-        catatan:   catatan,
-        formatRp:  _formatRp,
+        pemesan: pemesan.isEmpty ? 'Pelanggan' : pemesan,
+        catatan: catatan,
+        formatRp: _formatRp,
         isPrinting: _isPrinting,
         onPrint: () => _printReceipt(
-          orderId:   invoiceNo,
-          metode:    metode,
-          total:     total,
-          bayar:     bayar,
+          orderId: invoiceNo,
+          metode: metode,
+          total: total,
+          bayar: bayar,
           kembalian: kembalian,
-          pemesan:   pemesan.isEmpty ? 'Pelanggan' : pemesan,
-          catatan:   catatan,
-          items: items
-              .map((item) => {
-                    'name':  item['name'],
-                    'price': (item['price'] as num).toDouble(),
-                    'qty':   item['qty'] as int,
-                  })
-              .toList(),
+          pemesan: pemesan.isEmpty ? 'Pelanggan' : pemesan,
+          catatan: catatan,
+          items: items.map((item) => {
+            'name': item['name'],
+            'price': (item['price'] as num).toDouble(),
+            'qty': item['qty'] as int,
+            'category': item['category'] as String? ?? 'Lainnya',
+          }).toList(),
         ),
+        onClose: () {
+          // Kembali ke halaman kasir setelah tutup dialog
+          if (mounted) {
+            // Force refresh halaman kasir
+            setState(() {});
+          }
+        },
       ),
-    );
+    ).then((_) {
+      // Setelah dialog ditutup, pastikan navigator tetap aman
+      if (mounted) {
+        // Refresh data
+        _loadProduk();
+      }
+    });
   }
 
-  // ============================================================
-  //  BUILD
-  // ============================================================
+  // ==================== BUILD ====================
+  
   @override
   Widget build(BuildContext context) {
     final isMobile = Responsive.isMobile(context);
+    final isTablet = Responsive.isTablet(context);
+
     return Scaffold(
       backgroundColor: PosColors.background,
-      appBar: AppBar(
-        title: const Text('Kasir Seblak Kacida'),
-        backgroundColor: PosColors.primary,
-        actions: [
-          // Tombol status & koneksi printer
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: IconButton(
-              icon: Icon(
-                _isPrinterConnected
-                    ? Icons.bluetooth_connected
-                    : Icons.bluetooth_disabled,
-                color: Colors.white,
-              ),
-              onPressed: _connectToPrinter,
-              tooltip: _isPrinterConnected
-                  ? 'Terhubung: ${_connectedPrinterName ?? "Printer"}'
-                  : 'Hubungkan Printer',
-            ),
-          ),
-        ],
-      ),
-      body:               isMobile ? _mobileLayout() : _tabletLayout(),
+      body: isMobile 
+          ? _mobileLayout() 
+          : _tabletLayout(),
       bottomNavigationBar: isMobile ? _mobileBottomBar() : null,
     );
   }
 
+  // ==================== TABLET LAYOUT ====================
   Widget _tabletLayout() {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(flex: 3, child: _menuPanel()),
+        Expanded(
+          flex: 4,
+          child: _menuPanel(),
+        ),
         Container(width: 1, color: PosColors.border),
-        SizedBox(width: 320, child: _cartPanel()),
+        SizedBox(
+          width: _cartWidth,
+          child: _cartPanel(),
+        ),
       ],
     );
   }
 
+  // ==================== MOBILE LAYOUT ====================
   Widget _mobileLayout() => _menuPanel();
 
   Widget _mobileBottomBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color:  PosColors.surface,
+      decoration: const BoxDecoration(
+        color: PosColors.surface,
         border: Border(top: BorderSide(color: PosColors.border)),
-        boxShadow: const [PosShadows.md],
+        boxShadow: [PosShadows.md],
       ),
       child: SafeArea(
         top: false,
@@ -528,15 +489,15 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
                 children: [
                   Text(
                     '${_cart.fold(0, (s, e) => s + (e['qty'] as int))} item',
-                    style: const TextStyle(
-                        fontSize: 12, color: PosColors.textSecondary),
+                    style: const TextStyle(fontSize: 12, color: PosColors.textSecondary),
                   ),
                   Text(
                     _formatRp(_total),
                     style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: PosColors.primary),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: PosColors.primary,
+                    ),
                   ),
                 ],
               ),
@@ -549,26 +510,22 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
                         isScrollControlled: true,
                         backgroundColor: Colors.transparent,
                         builder: (_) => _CartBottomSheet(
-                          cart:          _cart,
-                          total:         _total,
-                          formatRp:      _formatRp,
-                          onNameChanged: (v) =>
-                              setState(() => _namaPemesan = v),
-                          onNoteChanged: (v) =>
-                              setState(() => _catatan = v),
-                          onIncrement:   _increment,
-                          onDecrement:   _decrement,
-                          onRemove:      _removeItem,
-                          onClear:       _clearCart,
-                          onBayar:       _showPaymentDialog,
+                          cart: _cart,
+                          formatRp: _formatRp,
+                          onNameChanged: (v) => setState(() => _namaPemesan = v),
+                          onNoteChanged: (v) => setState(() => _catatan = v),
+                          onIncrement: _increment,
+                          onDecrement: _decrement,
+                          onRemove: _removeItem,
+                          onClear: _clearCart,
+                          onBayar: _showPaymentDialog,
                         ),
                       ),
-              icon:  const Icon(Icons.shopping_cart_rounded, size: 18),
+              icon: const Icon(Icons.shopping_cart_rounded, size: 18),
               label: const Text('Keranjang'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: PosColors.primary,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               ),
             ),
           ],
@@ -577,7 +534,8 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
     );
   }
 
-  // ── Menu Panel ────────────────────────────────────────────
+  // ==================== MENU PANEL ====================
+  
   Widget _menuPanel() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -586,8 +544,7 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
         _categoryChips(),
         Expanded(
           child: _loadingProduk
-              ? const Center(
-                  child: CircularProgressIndicator(color: PosColors.primary))
+              ? const Center(child: CircularProgressIndicator(color: PosColors.primary))
               : _menuGrid(),
         ),
       ],
@@ -596,20 +553,15 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
 
   Widget _menuHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          Text('Pesan Seblak',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: PosColors.textPrimary,
-                  letterSpacing: -0.4)),
-          SizedBox(height: 4),
-          Text('Pilih item favoritmu!',
-              style:
-                  TextStyle(fontSize: 13, color: PosColors.textSecondary)),
+        children: [
+          const Text('Pesan Seblak',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: PosColors.textPrimary, letterSpacing: -0.4)),
+          const SizedBox(height: 2),
+          const Text('Pilih item favoritmu!',
+              style: TextStyle(fontSize: 12, color: PosColors.textSecondary)),
         ],
       ),
     );
@@ -618,53 +570,33 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
   Widget _categoryChips() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
       child: Row(
         children: _categories.map((cat) {
           final sel = _kategori == cat['label'];
           return Padding(
-            padding: const EdgeInsets.only(right: 10),
+            padding: const EdgeInsets.only(right: 8),
             child: GestureDetector(
               onTap: () => setState(() => _kategori = cat['label']!),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 9),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: sel ? PosColors.primary : PosColors.surface,
-                  borderRadius:
-                      BorderRadius.circular(PosRadius.xxl),
-                  border: Border.all(
-                    color: sel ? PosColors.primary : PosColors.border,
-                    width: 1.5,
-                  ),
-                  boxShadow: sel
-                      ? [
-                          BoxShadow(
-                            color: PosColors.primary
-                                .withValues(alpha: 0.25),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          )
-                        ]
-                      : null,
+                  borderRadius: BorderRadius.circular(PosRadius.xxl),
+                  border: Border.all(color: sel ? PosColors.primary : PosColors.border, width: 1.5),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(cat['emoji']!,
-                        style: const TextStyle(fontSize: 14)),
-                    const SizedBox(width: 6),
-                    Text(
-                      cat['label']!,
-                      style: TextStyle(
-                        fontSize:   13,
-                        fontWeight: FontWeight.w600,
-                        color: sel
-                            ? Colors.white
-                            : PosColors.textSecondary,
-                      ),
-                    ),
+                    Text(cat['emoji']!, style: const TextStyle(fontSize: 13)),
+                    const SizedBox(width: 4),
+                    Text(cat['label']!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: sel ? Colors.white : PosColors.textSecondary,
+                        )),
                   ],
                 ),
               ),
@@ -682,83 +614,88 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.sentiment_dissatisfied_rounded,
-                size: 48, color: Colors.grey.shade300),
+            Icon(Icons.sentiment_dissatisfied_rounded, size: 48, color: Colors.grey.shade300),
             const SizedBox(height: 12),
             const Text('Tidak ada produk tersedia',
-                style: TextStyle(
-                    color: PosColors.textMuted, fontSize: 14)),
+                style: TextStyle(color: PosColors.textMuted, fontSize: 14)),
           ],
         ),
       );
     }
 
-    final isMobile   = Responsive.isMobile(context);
-    final crossCount = isMobile ? 2 : 4;
+    final isMobile = Responsive.isMobile(context);
+    final isTablet = Responsive.isTablet(context);
+    
+    int crossCount;
+    double childAspectRatio;
+    
+    if (isTablet) {
+      crossCount = 4;
+      childAspectRatio = 0.75;
+    } else if (isMobile) {
+      crossCount = 2;
+      childAspectRatio = 0.80;
+    } else {
+      crossCount = 5;
+      childAspectRatio = 0.85;
+    }
 
     return GridView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount:   crossCount,
-        mainAxisSpacing:  12,
-        crossAxisSpacing: 12,
-        childAspectRatio: isMobile ? 0.85 : 0.9,
+        crossAxisCount: crossCount,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: childAspectRatio,
       ),
       itemCount: items.length,
       itemBuilder: (_, i) => _MenuCard(
-        item:     items[i],
+        item: items[i],
         formatRp: _formatRp,
-        onTap:    () => _addToCart(items[i]),
+        onTap: () => _addToCart(items[i]),
       ),
     );
   }
 
-  // ── Cart Panel (tablet) ───────────────────────────────────
+  // ==================== CART PANEL ====================
   Widget _cartPanel() {
     return Container(
+      width: _cartWidth,
       color: PosColors.background,
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
             color: PosColors.surface,
             child: Row(
               children: [
-                const Icon(Icons.shopping_cart_rounded,
-                    color: PosColors.textSecondary, size: 20),
-                const SizedBox(width: 10),
+                const Icon(Icons.shopping_cart_rounded, color: PosColors.textSecondary, size: 16),
+                const SizedBox(width: 6),
                 const Text('Keranjang',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: PosColors.textPrimary)),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: PosColors.textPrimary)),
                 const Spacer(),
                 if (_cart.isNotEmpty)
                   TextButton(
                     onPressed: _clearCart,
-                    style: TextButton.styleFrom(
-                        foregroundColor: PosColors.error,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8)),
-                    child: const Text('Hapus Semua',
-                        style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(foregroundColor: PosColors.error, padding: const EdgeInsets.symmetric(horizontal: 6)),
+                    child: const Text('Hapus Semua', style: TextStyle(fontSize: 10)),
                   ),
               ],
             ),
           ),
           Container(height: 1, color: PosColors.border),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
             child: _inputField(
-              hint:     'Nama pemesan...',
-              icon:     Icons.person_outline_rounded,
+              hint: 'Nama pemesan...',
+              icon: Icons.person_outline_rounded,
               onChange: (v) => setState(() => _namaPemesan = v),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 0),
             child: _inputField(
-              hint:     'Catatan (opsional)...',
+              hint: 'Catatan (opsional)...',
               onChange: (v) => setState(() => _catatan = v),
               maxLines: 2,
             ),
@@ -767,14 +704,14 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
             child: _cart.isEmpty
                 ? _emptyCart()
                 : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                    padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
                     itemCount: _cart.length,
                     itemBuilder: (_, i) => _CartItem(
-                      item:        _cart[i],
-                      formatRp:    _formatRp,
+                      item: _cart[i],
+                      formatRp: _formatRp,
                       onIncrement: () => _increment(i),
                       onDecrement: () => _decrement(i),
-                      onRemove:    () => _removeItem(i),
+                      onRemove: () => _removeItem(i),
                     ),
                   ),
           ),
@@ -792,27 +729,18 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
   }) {
     return TextField(
       onChanged: onChange,
-      maxLines:  maxLines,
+      maxLines: maxLines,
+      style: const TextStyle(fontSize: 11, color: PosColors.textPrimary),
       decoration: InputDecoration(
-        hintText:   hint,
-        prefixIcon: icon != null ? Icon(icon, size: 18) : null,
-        fillColor:  PosColors.surface,
-        filled:     true,
-        contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(PosRadius.md),
-          borderSide: const BorderSide(color: PosColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(PosRadius.md),
-          borderSide: const BorderSide(color: PosColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(PosRadius.md),
-          borderSide: const BorderSide(
-              color: PosColors.primary, width: 2),
-        ),
+        hintText: hint,
+        hintStyle: const TextStyle(fontSize: 11),
+        prefixIcon: icon != null ? Icon(icon, size: 14) : null,
+        fillColor: PosColors.surface,
+        filled: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(PosRadius.md), borderSide: const BorderSide(color: PosColors.border)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(PosRadius.md), borderSide: const BorderSide(color: PosColors.border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(PosRadius.md), borderSide: const BorderSide(color: PosColors.primary, width: 2)),
       ),
     );
   }
@@ -822,18 +750,13 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.dinner_dining_rounded,
-              size: 52, color: Colors.grey.shade200),
+          Icon(Icons.dinner_dining_rounded, size: 48, color: Colors.grey.shade300),
           const SizedBox(height: 12),
           const Text('Belum ada item dipilih',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: PosColors.textSecondary)),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: PosColors.textSecondary)),
           const SizedBox(height: 4),
           const Text('Tap item dari menu untuk menambahkan',
-              style: TextStyle(
-                  fontSize: 12, color: PosColors.textMuted),
+              style: TextStyle(fontSize: 10, color: PosColors.textMuted),
               textAlign: TextAlign.center),
         ],
       ),
@@ -842,9 +765,9 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
 
   Widget _cartSummary() {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color:  PosColors.surface,
+      padding: const EdgeInsets.all(10),
+      decoration: const BoxDecoration(
+        color: PosColors.surface,
         border: Border(top: BorderSide(color: PosColors.border)),
       ),
       child: Column(
@@ -853,29 +776,21 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Total',
-                  style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: PosColors.textPrimary)),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: PosColors.textPrimary)),
               Text(_formatRp(_total),
-                  style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: PosColors.primary)),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: PosColors.primary)),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _cart.isEmpty ? null : _showPaymentDialog,
-              icon:  const Icon(Icons.payment_rounded, size: 18),
-              label: const Text('Bayar'),
+              icon: const Icon(Icons.payment_rounded, size: 14),
+              label: const Text('Bayar', style: TextStyle(fontSize: 12)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: PosColors.primary,
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                textStyle: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w700),
+                padding: const EdgeInsets.symmetric(vertical: 8),
               ),
             ),
           ),
@@ -886,13 +801,14 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
 }
 
 // ============================================================
-//  MENU CARD
+// MENU CARD
 // ============================================================
 
 class _MenuCard extends StatefulWidget {
-  final Map<String, dynamic>    item;
+  final Map<String, dynamic> item;
   final String Function(double) formatRp;
   final VoidCallback onTap;
+
   const _MenuCard({
     required this.item,
     required this.formatRp,
@@ -903,18 +819,15 @@ class _MenuCard extends StatefulWidget {
   State<_MenuCard> createState() => _MenuCardState();
 }
 
-class _MenuCardState extends State<_MenuCard>
-    with SingleTickerProviderStateMixin {
+class _MenuCardState extends State<_MenuCard> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
-  late Animation<double>   _scale;
+  late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl  = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 120));
-    _scale = Tween(begin: 1.0, end: 0.94).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
+    _scale = Tween(begin: 1.0, end: 0.94).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
   }
 
   @override
@@ -925,80 +838,71 @@ class _MenuCardState extends State<_MenuCard>
 
   @override
   Widget build(BuildContext context) {
-    final item     = widget.item;
-    final stock    = item['stock'] as int? ?? 0;
+    final item = widget.item;
+    final stock = item['stock'] as int? ?? 0;
     final imageUrl = item['image_url'] as String? ?? '';
-    final price    = (item['price'] as num?)?.toDouble() ?? 0.0;
-    final isLow    = stock > 0 && stock <= 5;
+    final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+    final isLow = stock > 0 && stock <= 5;
 
     return GestureDetector(
-      onTapDown:   (_) => _ctrl.forward(),
-      onTapUp:     (_) { _ctrl.reverse(); widget.onTap(); },
-      onTapCancel: ()  => _ctrl.reverse(),
+      onTapDown: (_) => _ctrl.forward(),
+      onTapUp: (_) {
+        _ctrl.reverse();
+        widget.onTap();
+      },
+      onTapCancel: () => _ctrl.reverse(),
       child: ScaleTransition(
         scale: _scale,
         child: Container(
           decoration: posCardDecoration(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                flex: 3,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft:  Radius.circular(PosRadius.lg),
-                    topRight: Radius.circular(PosRadius.lg),
-                  ),
+              ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(PosRadius.lg),
+                  topRight: Radius.circular(PosRadius.lg),
+                ),
+                child: AspectRatio(
+                  aspectRatio: 1.2,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
                       _produkImage(imageUrl),
                       if (isLow)
                         Positioned(
-                          top: 8, right: 8,
+                          top: 4,
+                          right: 4,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7, vertical: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                             decoration: BoxDecoration(
                               color: PosColors.warningBg,
-                              borderRadius: BorderRadius.circular(
-                                  PosRadius.xxl),
-                              border: Border.all(
-                                  color: const Color(0xFFFDE68A)),
+                              borderRadius: BorderRadius.circular(PosRadius.xxl),
+                              border: Border.all(color: const Color(0xFFFDE68A)),
                             ),
                             child: Text('Sisa $stock',
-                                style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: PosColors.warning)),
+                                style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w700, color: PosColors.warning)),
                           ),
                         ),
                     ],
                   ),
                 ),
               ),
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(item['name'] as String? ?? '-',
-                          style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: PosColors.textPrimary),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
-                      Text(widget.formatRp(price),
-                          style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: PosColors.primary)),
-                    ],
-                  ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+                child: Text(
+                  item['name'] as String? ?? '-',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: PosColors.textPrimary),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                child: Text(
+                  widget.formatRp(price),
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: PosColors.primary),
                 ),
               ),
             ],
@@ -1012,9 +916,7 @@ class _MenuCardState extends State<_MenuCard>
     if (imageUrl.isEmpty) {
       return Container(
         color: PosColors.surfaceAlt,
-        child: const Center(
-            child: Icon(Icons.fastfood_rounded,
-                size: 32, color: PosColors.textMuted)),
+        child: const Center(child: Icon(Icons.fastfood_rounded, size: 24, color: PosColors.textMuted)),
       );
     }
     if (!imageUrl.startsWith('assets/')) {
@@ -1022,28 +924,24 @@ class _MenuCardState extends State<_MenuCard>
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => Container(
                 color: PosColors.surfaceAlt,
-                child: const Center(
-                    child: Icon(Icons.fastfood_rounded,
-                        size: 32, color: PosColors.textMuted)),
+                child: const Center(child: Icon(Icons.fastfood_rounded, size: 24, color: PosColors.textMuted)),
               ));
     }
     return Image.asset(imageUrl,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => Container(
               color: PosColors.surfaceAlt,
-              child: const Center(
-                  child: Icon(Icons.fastfood_rounded,
-                      size: 32, color: PosColors.textMuted)),
+              child: const Center(child: Icon(Icons.fastfood_rounded, size: 24, color: PosColors.textMuted)),
             ));
   }
 }
 
 // ============================================================
-//  CART ITEM
+// CART ITEM
 // ============================================================
 
 class _CartItem extends StatelessWidget {
-  final Map<String, dynamic>    item;
+  final Map<String, dynamic> item;
   final String Function(double) formatRp;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
@@ -1059,14 +957,14 @@ class _CartItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final price    = (item['price'] as num).toDouble();
-    final qty      = item['qty'] as int;
+    final price = (item['price'] as num).toDouble();
+    final qty = item['qty'] as int;
     final subtotal = price * qty;
     final imageUrl = item['image_url'] as String? ?? '';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: posCardDecoration(withShadow: false),
       child: Row(
         children: [
@@ -1074,53 +972,45 @@ class _CartItem extends StatelessWidget {
             borderRadius: BorderRadius.circular(PosRadius.sm),
             child: imageUrl.isNotEmpty
                 ? (!imageUrl.startsWith('assets/')
-                    ? Image.file(File(imageUrl),
-                        width: 40, height: 40, fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _imgPlaceholder())
-                    : Image.asset(imageUrl,
-                        width: 40, height: 40, fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _imgPlaceholder()))
+                    ? Image.file(File(imageUrl), width: 36, height: 36, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imgPlaceholder())
+                    : Image.asset(imageUrl, width: 36, height: 36, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imgPlaceholder()))
                 : _imgPlaceholder(),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item['name'] as String? ?? '-',
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: PosColors.textPrimary),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: PosColors.textPrimary),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 2),
                 Text(formatRp(subtotal),
-                    style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: PosColors.primary)),
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: PosColors.primary)),
               ],
             ),
           ),
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               _QtyBtn(
-                  icon: Icons.remove_rounded,
-                  onTap: onDecrement,
-                  isRemove: qty == 1),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text('$qty',
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: PosColors.textPrimary)),
+                icon: qty == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
+                onTap: onDecrement,
+                isRemove: qty == 1,
+              ),
+              SizedBox(
+                width: 28,
+                child: Center(
+                  child: Text('$qty',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: PosColors.textPrimary)),
+                ),
               ),
               _QtyBtn(
-                  icon: Icons.add_rounded,
-                  onTap: onIncrement,
-                  isRemove: false),
+                icon: Icons.add_rounded,
+                onTap: onIncrement,
+                isRemove: false,
+              ),
             ],
           ),
         ],
@@ -1129,53 +1019,59 @@ class _CartItem extends StatelessWidget {
   }
 
   Widget _imgPlaceholder() => Container(
-        width: 40, height: 40,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
           color: PosColors.surfaceAlt,
           borderRadius: BorderRadius.circular(PosRadius.sm),
         ),
-        child: const Icon(Icons.fastfood_rounded,
-            size: 18, color: PosColors.textMuted),
+        child: const Icon(Icons.fastfood_rounded, size: 16, color: PosColors.textMuted),
       );
 }
+
+// ============================================================
+// QTY BUTTON
+// ============================================================
 
 class _QtyBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final bool isRemove;
-  const _QtyBtn(
-      {required this.icon, required this.onTap, required this.isRemove});
+
+  const _QtyBtn({
+    required this.icon,
+    required this.onTap,
+    required this.isRemove,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 28, height: 28,
-        decoration: BoxDecoration(
-          color: isRemove ? PosColors.errorBg : PosColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(PosRadius.sm),
-          border: Border.all(
-            color: isRemove ? PosColors.primaryLight : PosColors.border,
+    return Material(
+      color: isRemove ? PosColors.errorBg : PosColors.surfaceAlt,
+      borderRadius: BorderRadius.circular(PosRadius.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(PosRadius.sm),
+        child: Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(PosRadius.sm),
+            border: Border.all(color: isRemove ? PosColors.primaryLight : PosColors.border),
           ),
+          child: Icon(icon, size: 14, color: isRemove ? PosColors.primary : PosColors.textSecondary),
         ),
-        child: Icon(icon,
-            size: 14,
-            color: isRemove
-                ? PosColors.primary
-                : PosColors.textSecondary),
       ),
     );
   }
 }
 
 // ============================================================
-//  CART BOTTOM SHEET (mobile)
+// CART BOTTOM SHEET (mobile)
 // ============================================================
 
 class _CartBottomSheet extends StatelessWidget {
   final List<Map<String, dynamic>> cart;
-  final double total;
   final String Function(double) formatRp;
   final Function(String) onNameChanged;
   final Function(String) onNoteChanged;
@@ -1187,7 +1083,6 @@ class _CartBottomSheet extends StatelessWidget {
 
   const _CartBottomSheet({
     required this.cart,
-    required this.total,
     required this.formatRp,
     required this.onNameChanged,
     required this.onNoteChanged,
@@ -1200,42 +1095,36 @@ class _CartBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final total = cart.fold(0.0, (s, e) => s + (e['price'] as num).toDouble() * (e['qty'] as int));
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
       decoration: const BoxDecoration(
-        color:        PosColors.background,
-        borderRadius: BorderRadius.vertical(
-            top: Radius.circular(PosRadius.xl)),
+        color: PosColors.background,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(PosRadius.xl)),
       ),
       child: Column(
         children: [
           Center(
             child: Container(
               margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                  color: PosColors.border,
-                  borderRadius: BorderRadius.circular(2)),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(color: PosColors.border, borderRadius: BorderRadius.circular(2)),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
                 const Text('Keranjang',
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: PosColors.textPrimary)),
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: PosColors.textPrimary)),
                 const Spacer(),
                 if (cart.isNotEmpty)
                   TextButton(
                     onPressed: onClear,
-                    style: TextButton.styleFrom(
-                        foregroundColor: PosColors.error),
-                    child: const Text('Hapus Semua',
-                        style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(foregroundColor: PosColors.error),
+                    child: const Text('Hapus Semua', style: TextStyle(fontSize: 12)),
                   ),
               ],
             ),
@@ -1247,23 +1136,25 @@ class _CartBottomSheet extends StatelessWidget {
               child: Column(
                 children: [
                   _buildTextField(
-                      hint:      'Nama pemesan...',
-                      icon:      Icons.person_outline_rounded,
-                      onChanged: onNameChanged),
+                    hint: 'Nama pemesan...',
+                    icon: Icons.person_outline_rounded,
+                    onChanged: onNameChanged,
+                  ),
                   const SizedBox(height: 10),
                   _buildTextField(
-                      hint:      'Catatan (opsional)...',
-                      onChanged: onNoteChanged,
-                      maxLines:  2),
+                    hint: 'Catatan (opsional)...',
+                    onChanged: onNoteChanged,
+                    maxLines: 2,
+                  ),
                   const SizedBox(height: 16),
                   ...List.generate(
                     cart.length,
                     (i) => _CartItem(
-                      item:        cart[i],
-                      formatRp:    formatRp,
+                      item: cart[i],
+                      formatRp: formatRp,
                       onIncrement: () => onIncrement(i),
                       onDecrement: () => onDecrement(i),
-                      onRemove:    () => onRemove(i),
+                      onRemove: () => onRemove(i),
                     ),
                   ),
                 ],
@@ -1272,8 +1163,8 @@ class _CartBottomSheet extends StatelessWidget {
           ),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color:  PosColors.surface,
+            decoration: const BoxDecoration(
+              color: PosColors.surface,
               border: Border(top: BorderSide(color: PosColors.border)),
             ),
             child: SafeArea(
@@ -1283,15 +1174,9 @@ class _CartBottomSheet extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Total',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700)),
+                      const Text('Total', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                       Text(formatRp(total),
-                          style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: PosColors.primary)),
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: PosColors.primary)),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -1299,13 +1184,11 @@ class _CartBottomSheet extends StatelessWidget {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: cart.isEmpty ? null : onBayar,
-                      icon:  const Icon(Icons.payment_rounded, size: 18),
+                      icon: const Icon(Icons.payment_rounded, size: 18),
                       label: const Text('Bayar'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: PosColors.primary,
                         padding: const EdgeInsets.symmetric(vertical: 15),
-                        textStyle: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700),
                       ),
                     ),
                   ),
@@ -1326,34 +1209,23 @@ class _CartBottomSheet extends StatelessWidget {
   }) {
     return TextField(
       onChanged: onChanged,
-      maxLines:  maxLines,
+      maxLines: maxLines,
       decoration: InputDecoration(
-        hintText:   hint,
+        hintText: hint,
         prefixIcon: icon != null ? Icon(icon, size: 18) : null,
-        fillColor:  PosColors.surface,
-        filled:     true,
-        contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(PosRadius.md),
-          borderSide: const BorderSide(color: PosColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(PosRadius.md),
-          borderSide: const BorderSide(color: PosColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(PosRadius.md),
-          borderSide: const BorderSide(
-              color: PosColors.primary, width: 2),
-        ),
+        fillColor: PosColors.surface,
+        filled: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(PosRadius.md), borderSide: const BorderSide(color: PosColors.border)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(PosRadius.md), borderSide: const BorderSide(color: PosColors.border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(PosRadius.md), borderSide: const BorderSide(color: PosColors.primary, width: 2)),
       ),
     );
   }
 }
 
 // ============================================================
-//  PAYMENT DIALOG
+// PAYMENT DIALOG
 // ============================================================
 
 class _PaymentDialog extends StatefulWidget {
@@ -1372,9 +1244,9 @@ class _PaymentDialog extends StatefulWidget {
 }
 
 class _PaymentDialogState extends State<_PaymentDialog> {
-  String _metode           = 'Cash';
-  final _amountCtrl         = TextEditingController();
-  bool _loading            = false;
+  String _metode = 'Cash';
+  final _amountCtrl = TextEditingController();
+  bool _loading = false;
 
   @override
   void initState() {
@@ -1388,23 +1260,16 @@ class _PaymentDialogState extends State<_PaymentDialog> {
     super.dispose();
   }
 
-  double get _bayar =>
-      double.tryParse(
-          _amountCtrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ??
-      0;
-  double get _kembalian =>
-      (_bayar - widget.total).clamp(0, double.infinity);
-  bool get _canPay =>
-      _metode == 'QRIS' || _bayar >= widget.total;
+  double get _bayar => double.tryParse(_amountCtrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+  double get _kembalian => (_bayar - widget.total).clamp(0, double.infinity);
+  bool get _canPay => _metode == 'QRIS' || _bayar >= widget.total;
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: PosColors.surface,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(PosRadius.xl)),
-      insetPadding:
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PosRadius.xl)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: SingleChildScrollView(
         child: Container(
           padding: const EdgeInsets.all(24),
@@ -1414,88 +1279,53 @@ class _PaymentDialogState extends State<_PaymentDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Pembayaran',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: PosColors.textPrimary,
-                      letterSpacing: -0.4)),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: PosColors.textPrimary, letterSpacing: -0.4)),
               const SizedBox(height: 20),
               Container(
-                width:   double.infinity,
+                width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: posHighlightDecoration(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('Total Pembayaran',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: PosColors.textSecondary)),
+                        style: TextStyle(fontSize: 12, color: PosColors.textSecondary)),
                     const SizedBox(height: 6),
                     Text(widget.formatRp(widget.total),
-                        style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: PosColors.primary,
-                            letterSpacing: -0.5)),
+                        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: PosColors.primary, letterSpacing: -0.5)),
                   ],
                 ),
               ),
               const SizedBox(height: 20),
               const Text('Metode Pembayaran',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: PosColors.textSecondary)),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: PosColors.textSecondary)),
               const SizedBox(height: 10),
               Row(
                 children: ['Cash', 'QRIS'].map((m) {
-                  final sel   = _metode == m;
+                  final sel = _metode == m;
                   final label = m == 'Cash' ? 'Tunai' : 'QRIS';
                   return Expanded(
                     child: Padding(
-                      padding: EdgeInsets.only(
-                          right: m == 'Cash' ? 10 : 0),
+                      padding: EdgeInsets.only(right: m == 'Cash' ? 10 : 0),
                       child: GestureDetector(
                         onTap: () => setState(() => _metode = m),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 160),
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
-                            color: sel
-                                ? PosColors.primary
-                                : PosColors.surface,
-                            borderRadius: BorderRadius.circular(
-                                PosRadius.md),
-                            border: Border.all(
-                              color: sel
-                                  ? PosColors.primary
-                                  : PosColors.border,
-                              width: 1.5,
-                            ),
+                            color: sel ? PosColors.primary : PosColors.surface,
+                            borderRadius: BorderRadius.circular(PosRadius.md),
+                            border: Border.all(color: sel ? PosColors.primary : PosColors.border, width: 1.5),
                           ),
                           child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                m == 'Cash'
-                                    ? Icons.payments_rounded
-                                    : Icons.qr_code_rounded,
-                                size:  16,
-                                color: sel
-                                    ? Colors.white
-                                    : PosColors.textSecondary,
-                              ),
+                              Icon(m == 'Cash' ? Icons.payments_rounded : Icons.qr_code_rounded,
+                                  size: 16, color: sel ? Colors.white : PosColors.textSecondary),
                               const SizedBox(width: 6),
                               Text(label,
-                                  style: TextStyle(
-                                      fontSize:   13,
-                                      fontWeight: FontWeight.w600,
-                                      color: sel
-                                          ? Colors.white
-                                          : PosColors.textSecondary)),
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                                      color: sel ? Colors.white : PosColors.textSecondary)),
                             ],
                           ),
                         ),
@@ -1507,126 +1337,73 @@ class _PaymentDialogState extends State<_PaymentDialog> {
               const SizedBox(height: 20),
               if (_metode == 'Cash') ...[
                 const Text('Uang Diterima',
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: PosColors.textSecondary)),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: PosColors.textSecondary)),
                 const SizedBox(height: 8),
                 TextField(
-                  controller:   _amountCtrl,
+                  controller: _amountCtrl,
                   keyboardType: TextInputType.number,
-                  onChanged:    (_) => setState(() {}),
-                  style: const TextStyle(
-                      fontSize: 14, color: PosColors.textPrimary),
+                  onChanged: (_) => setState(() {}),
+                  style: const TextStyle(fontSize: 14, color: PosColors.textPrimary),
                   decoration: InputDecoration(
                     prefixText: 'Rp ',
-                    fillColor:  PosColors.surface,
-                    filled:     true,
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(PosRadius.md),
-                      borderSide:
-                          const BorderSide(color: PosColors.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(PosRadius.md),
-                      borderSide:
-                          const BorderSide(color: PosColors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(PosRadius.md),
-                      borderSide: const BorderSide(
-                          color: PosColors.primary, width: 2),
-                    ),
+                    fillColor: PosColors.surface,
+                    filled: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(PosRadius.md), borderSide: const BorderSide(color: PosColors.border)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(PosRadius.md), borderSide: const BorderSide(color: PosColors.border)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(PosRadius.md), borderSide: const BorderSide(color: PosColors.primary, width: 2)),
                   ),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: [5000, 10000, 20000, 50000, 100000]
-                      .map((v) => GestureDetector(
-                            onTap: () => setState(
-                                () => _amountCtrl.text = v.toString()),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: PosColors.surfaceAlt,
-                                borderRadius: BorderRadius.circular(
-                                    PosRadius.md),
-                                border: Border.all(
-                                    color: PosColors.border),
-                              ),
-                              child: Text('Rp ${v ~/ 1000}k',
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: PosColors.textSecondary)),
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ...List.generate(5, (i) => [5000, 10000, 20000, 50000, 100000][i]).map((v) => GestureDetector(
+                          onTap: () => setState(() => _amountCtrl.text = v.toString()),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: PosColors.surfaceAlt,
+                              borderRadius: BorderRadius.circular(PosRadius.md),
+                              border: Border.all(color: PosColors.border),
                             ),
-                          ))
-                      .toList()
-                    ..add(GestureDetector(
-                      onTap: () => setState(() => _amountCtrl.text =
-                          widget.total.toStringAsFixed(0)),
+                            child: Text('Rp ${v ~/ 1000}k',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: PosColors.textSecondary)),
+                          ),
+                        )),
+                    GestureDetector(
+                      onTap: () => setState(() => _amountCtrl.text = widget.total.toStringAsFixed(0)),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
                           color: PosColors.primaryBg,
-                          borderRadius:
-                              BorderRadius.circular(PosRadius.md),
-                          border: Border.all(
-                              color: PosColors.primaryLight),
+                          borderRadius: BorderRadius.circular(PosRadius.md),
+                          border: Border.all(color: PosColors.primaryLight),
                         ),
                         child: const Text('Uang Pas',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: PosColors.primary)),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: PosColors.primary)),
                       ),
-                    )),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 Container(
-                  width:   double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: _bayar >= widget.total
-                        ? PosColors.successBg
-                        : PosColors.errorBg,
+                    color: _bayar >= widget.total ? PosColors.successBg : PosColors.errorBg,
                     borderRadius: BorderRadius.circular(PosRadius.md),
-                    border: Border.all(
-                      color: _bayar >= widget.total
-                          ? const Color(0xFF9AE6B4)
-                          : PosColors.primaryLight,
-                    ),
+                    border: Border.all(color: _bayar >= widget.total ? const Color(0xFF9AE6B4) : PosColors.primaryLight),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        _bayar >= widget.total ? 'Kembalian' : 'Kurang',
-                        style: TextStyle(
-                            fontSize:   13,
-                            fontWeight: FontWeight.w600,
-                            color: _bayar >= widget.total
-                                ? PosColors.success
-                                : PosColors.error),
-                      ),
-                      Text(
-                        _bayar >= widget.total
-                            ? widget.formatRp(_kembalian)
-                            : widget.formatRp(widget.total - _bayar),
-                        style: TextStyle(
-                            fontSize:   15,
-                            fontWeight: FontWeight.w800,
-                            color: _bayar >= widget.total
-                                ? PosColors.success
-                                : PosColors.error),
-                      ),
+                      Text(_bayar >= widget.total ? 'Kembalian' : 'Kurang',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                              color: _bayar >= widget.total ? PosColors.success : PosColors.error)),
+                      Text(_bayar >= widget.total ? widget.formatRp(_kembalian) : widget.formatRp(widget.total - _bayar),
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                              color: _bayar >= widget.total ? PosColors.success : PosColors.error)),
                     ],
                   ),
                 ),
@@ -1636,22 +1413,16 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                   decoration: BoxDecoration(
                     color: PosColors.infoBg,
                     borderRadius: BorderRadius.circular(PosRadius.md),
-                    border: Border.all(
-                        color: const Color(0xFF90CDF4)),
+                    border: Border.all(color: const Color(0xFF90CDF4)),
                   ),
-                  child: Row(
-                    children: const [
-                      Icon(Icons.qr_code_rounded,
-                          color: PosColors.info, size: 28),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.qr_code_rounded, color: PosColors.info, size: 28),
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Tunjukkan kode QR kepada pelanggan.\n'
-                          'Tekan "Bayar QRIS" setelah pelanggan konfirmasi.',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color:    PosColors.info,
-                              height:   1.5),
+                          'Tunjukkan kode QR kepada pelanggan.\nTekan "Bayar QRIS" setelah pelanggan konfirmasi.',
+                          style: TextStyle(fontSize: 12, color: PosColors.info, height: 1.5),
                         ),
                       ),
                     ],
@@ -1663,9 +1434,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: _loading
-                          ? null
-                          : () => Navigator.pop(context),
+                      onPressed: _loading ? null : () => Navigator.pop(context),
                       child: const Text('Batal'),
                     ),
                   ),
@@ -1675,24 +1444,12 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                       onPressed: (_canPay && !_loading)
                           ? () async {
                               setState(() => _loading = true);
-                              Navigator.pop(context);
-                              await widget.onPay(
-                                _metode,
-                                _metode == 'Cash'
-                                    ? _bayar
-                                    : widget.total,
-                              );
+                              await widget.onPay(_metode, _metode == 'Cash' ? _bayar : widget.total);
                             }
                           : null,
                       child: _loading
-                          ? const SizedBox(
-                              width: 18, height: 18,
-                              child: CircularProgressIndicator(
-                                  color:       Colors.white,
-                                  strokeWidth: 2))
-                          : Text(_metode == 'Cash'
-                              ? 'Bayar Tunai'
-                              : 'Bayar QRIS'),
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : Text(_metode == 'Cash' ? 'Bayar Tunai' : 'Bayar QRIS'),
                     ),
                   ),
                 ],
@@ -1706,10 +1463,10 @@ class _PaymentDialogState extends State<_PaymentDialog> {
 }
 
 // ============================================================
-//  STRUK DIALOG
+// STRUK DIALOG (DIPERBAIKI)
 // ============================================================
 
-class _StrukDialog extends StatelessWidget {
+class _StrukDialog extends StatefulWidget {
   final String invoiceNo;
   final String metode;
   final double total;
@@ -1721,6 +1478,7 @@ class _StrukDialog extends StatelessWidget {
   final String Function(double) formatRp;
   final VoidCallback onPrint;
   final bool isPrinting;
+  final VoidCallback onClose;
 
   const _StrukDialog({
     required this.invoiceNo,
@@ -1734,27 +1492,25 @@ class _StrukDialog extends StatelessWidget {
     required this.formatRp,
     required this.onPrint,
     this.isPrinting = false,
+    required this.onClose,
   });
 
   @override
+  State<_StrukDialog> createState() => _StrukDialogState();
+}
+
+class _StrukDialogState extends State<_StrukDialog> {
+  @override
   Widget build(BuildContext context) {
-    final now        = DateTime.now();
-    final months     = [
-      'Jan','Feb','Mar','Apr','Mei','Jun',
-      'Jul','Agt','Sep','Okt','Nov','Des'
-    ];
-    final dateStr    =
-        '${now.day} ${months[now.month - 1]} ${now.year}  '
-        '${now.hour.toString().padLeft(2, '0')}.'
-        '${now.minute.toString().padLeft(2, '0')}';
-    final methodLabel = metode == 'Cash' ? 'Tunai' : metode;
+    final now = DateTime.now();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+    final dateStr = '${now.day} ${months[now.month - 1]} ${now.year}  ${now.hour.toString().padLeft(2, '0')}.${now.minute.toString().padLeft(2, '0')}';
+    final methodLabel = widget.metode == 'Cash' ? 'Tunai' : widget.metode;
 
     return Dialog(
       backgroundColor: PosColors.surface,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(PosRadius.xl)),
-      insetPadding:
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PosRadius.xl)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: SingleChildScrollView(
         child: Container(
           padding: const EdgeInsets.all(24),
@@ -1763,31 +1519,24 @@ class _StrukDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text('SEBLAK KACIDA',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: PosColors.textPrimary,
-                      letterSpacing: 1)),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: PosColors.textPrimary, letterSpacing: 1)),
               const SizedBox(height: 4),
-              Text(dateStr,
-                  style: const TextStyle(
-                      fontSize: 12, color: PosColors.textMuted)),
+              Text(dateStr, style: const TextStyle(fontSize: 12, color: PosColors.textMuted)),
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 8),
-              _row('No. Order', invoiceNo, bold: true),
+              _row('No. Order', widget.invoiceNo, bold: true),
               const SizedBox(height: 6),
-              _row('Pemesan', pemesan),
-              if (catatan.isNotEmpty) ...[
+              _row('Pemesan', widget.pemesan),
+              if (widget.catatan.isNotEmpty) ...[
                 const SizedBox(height: 6),
-                _row('Catatan', catatan),
+                _row('Catatan', widget.catatan),
               ],
               const SizedBox(height: 12),
               const Divider(),
               const SizedBox(height: 8),
-              ...items.map((item) {
-                final sub = (item['price'] as num).toDouble() *
-                    (item['qty'] as int);
+              ...widget.items.map((item) {
+                final sub = (item['price'] as num).toDouble() * (item['qty'] as int);
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: Row(
@@ -1796,26 +1545,15 @@ class _StrukDialog extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                                '${item['name']} x${item['qty']}',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: PosColors.textPrimary)),
-                            Text(
-                                formatRp((item['price'] as num)
-                                    .toDouble()),
-                                style: const TextStyle(
-                                    fontSize: 11,
-                                    color: PosColors.textMuted)),
+                            Text('${item['name']} x${item['qty']}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: PosColors.textPrimary)),
+                            Text(widget.formatRp((item['price'] as num).toDouble()),
+                                style: const TextStyle(fontSize: 11, color: PosColors.textMuted)),
                           ],
                         ),
                       ),
-                      Text(formatRp(sub),
-                          style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: PosColors.textPrimary)),
+                      Text(widget.formatRp(sub),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: PosColors.textPrimary)),
                     ],
                   ),
                 );
@@ -1823,31 +1561,27 @@ class _StrukDialog extends StatelessWidget {
               const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 8),
-              _row('Total', formatRp(total),
-                  bold: true, valueColor: PosColors.primary),
+              _row('Total', widget.formatRp(widget.total), bold: true, valueColor: PosColors.primary),
               const SizedBox(height: 6),
-              _row('Bayar ($methodLabel)', formatRp(bayar)),
-              const SizedBox(height: 6),
-              _row('Kembalian', formatRp(kembalian),
-                  bold: true, valueColor: PosColors.success),
+              if (widget.metode == 'Cash') ...[
+                _row('Bayar', widget.formatRp(widget.bayar)),
+                const SizedBox(height: 6),
+                _row('Kembalian', widget.formatRp(widget.kembalian), bold: true, valueColor: PosColors.success),
+              ],
               const SizedBox(height: 20),
-              const Text('Terima kasih sudah mampir!',
-                  style: TextStyle(
-                      fontSize: 13, color: PosColors.textSecondary),
+              const Text('Terima kasih sudah mampir! 🌶️',
+                  style: TextStyle(fontSize: 13, color: PosColors.textSecondary),
                   textAlign: TextAlign.center),
               const SizedBox(height: 20),
-              // Tombol Cetak Struk
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: isPrinting ? null : onPrint,
-                  icon: isPrinting
-                      ? const SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: PosColors.primary))
+                  onPressed: widget.isPrinting ? null : widget.onPrint,
+                  icon: widget.isPrinting
+                      ? const SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: PosColors.primary))
                       : const Icon(Icons.print_rounded, size: 18),
-                  label: Text(isPrinting ? 'Mencetak...' : 'Cetak Struk'),
+                  label: Text(widget.isPrinting ? 'Mencetak...' : 'Cetak Struk'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: PosColors.primary,
                     side: const BorderSide(color: PosColors.primary),
@@ -1859,8 +1593,12 @@ class _StrukDialog extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Selesai'),
+                  onPressed: () {
+                    widget.onClose();
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: PosColors.primary, padding: const EdgeInsets.symmetric(vertical: 13)),
+                  child: const Text('Selesai', style: TextStyle(color: Colors.white)),
                 ),
               ),
             ],
@@ -1870,20 +1608,17 @@ class _StrukDialog extends StatelessWidget {
     );
   }
 
-  Widget _row(String label, String value,
-      {bool bold = false, Color? valueColor}) {
+  Widget _row(String label, String value, {bool bold = false, Color? valueColor}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 13, color: PosColors.textSecondary)),
+        Text(label, style: const TextStyle(fontSize: 13, color: PosColors.textSecondary)),
         Text(value,
             style: TextStyle(
-                fontSize:   13,
-                fontWeight:
-                    bold ? FontWeight.w700 : FontWeight.w500,
-                color: valueColor ?? PosColors.textPrimary)),
+              fontSize: 13,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+              color: valueColor ?? PosColors.textPrimary,
+            )),
       ],
     );
   }

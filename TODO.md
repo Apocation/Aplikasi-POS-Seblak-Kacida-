@@ -1,8 +1,7 @@
-# TODO: Upload changes to GitHub
+# POS RefreshIndicator Task
 
-- [ ] Step 1: Install GitHub CLI (optional)
-- [ ] Step 2: git add .
-- [ ] Step 3: git commit -m "Update POS app: modify kasir_page, home_page, printer_service, permissions, pubspec deps, AndroidManifest, remove sheets_service"
-- [ ] Step 4: git push origin main
-- [ ] Step 5: Verify push and complete
+## Steps
+- [x] 1. Edit lib/features/kasir/kasir_page.dart: Replace build method with RefreshIndicator wrapper
+- [x] 2. Test refresh functionality
+- [x] 3. Mark complete
 

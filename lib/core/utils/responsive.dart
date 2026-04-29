@@ -16,7 +16,7 @@ class Responsive {
 
   static bool isTablet(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    return width >= mobile && width < tablet;
+    return width >= 600 && width < 1024;
   }
 
   static bool isDesktop(BuildContext context) {
@@ -103,6 +103,10 @@ class Responsive {
     if (isTablet(context)) return 500;
     return 600;
   }
+
+  static bool isTabletCompact(BuildContext context) => width(context) < 900;
+
+  static double cartWidth(BuildContext context) => (width(context) * 0.35).clamp(300.0, 380.0);
 
   static double sidebarWidth(BuildContext context) {
     if (isDesktop(context)) return 260;
