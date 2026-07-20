@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "541009219366",
+    "firebase_url": "https://project-seblak-kacida-default-rtdb.firebaseio.com",
     "project_id": "project-seblak-kacida",
     "storage_bucket": "project-seblak-kacida.firebasestorage.app"
   },
