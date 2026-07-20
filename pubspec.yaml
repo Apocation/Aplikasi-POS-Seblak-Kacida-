@@ -2,7 +2,8 @@ name: seblak_kacida
 description: "Aplikasi POS Seblak Kacida"
 publish_to: 'none'
 
-version: 1.0.0+1
+# Naikkan angka setelah "+" (versionCode) setiap kali build update untuk tablet
+version: 1.1.0+2
 
 environment:
   sdk: ^3.11.4
@@ -32,6 +33,13 @@ dependencies:
   # Firebase
   firebase_core: ^3.15.2
   cloud_firestore: ^5.6.12
+  firebase_crashlytics: ^4.3.7
+
+  # Deteksi koneksi internet (untuk auto-sync saat internet kembali)
+  connectivity_plus: ^6.1.0
+
+  # Pilih file backup dari folder/Drive saat restore
+  file_picker: ^8.1.4
   
 # 🔥 BLUETOOTH PRINTER - PAKAI INI (PASTI BERHASIL) 🔥
   print_bluetooth_thermal: ^1.1.9

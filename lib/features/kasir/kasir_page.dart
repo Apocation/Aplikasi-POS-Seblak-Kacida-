@@ -5,8 +5,8 @@ import '../../theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/services/data_notifier.dart';
-import '../../core/services/printer_service.dart';
 import '../../core/services/firebase_service.dart';
+import '../../core/services/printer_service.dart';
 
 class KasirPage extends StatefulWidget {
   const KasirPage({super.key});
@@ -25,7 +25,6 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
 
   // Printer related
   bool _isPrinterConnected = false;
-  String? _connectedPrinterName;
   bool _isPrinting = false;
 
   // Tablet: lebar keranjang
@@ -51,7 +50,6 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
     if (mounted) {
       setState(() {
         _isPrinterConnected = connected;
-        _connectedPrinterName = PrinterService.connectedPrinter;
       });
     }
   }
@@ -91,22 +89,20 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
                 title: Text(name),
                 subtitle: Text(address),
                 onTap: () async {
+                  final messenger = ScaffoldMessenger.of(this.context);
                   Navigator.pop(context);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Menghubungkan ke $name...'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  }
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Menghubungkan ke $name...'),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
                   final success = await PrinterService.connect(address, name);
                   if (mounted) {
                     setState(() {
                       _isPrinterConnected = success;
-                      _connectedPrinterName = name;
                     });
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(
                         content: Text(success ? 'Terhubung ke $name' : 'Gagal terhubung ke printer'),
                         backgroundColor: success ? Colors.green : PosColors.error,
@@ -347,6 +343,17 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
         );
       }
 
+      // Sync ke Firestore (jangan blokir UI kalau internet lambat/mati —
+      // kalau gagal, transaksi tetap tersimpan lokal dan akan ikut
+      // ter-push saat syncAll() berikutnya)
+      FirebaseService.pushSingleTransaction(orderId);
+      for (final item in tempCart) {
+        FirebaseService.pushProductStock(
+          item['id'] as String,
+          (item['stock'] as int) - (item['qty'] as int),
+        );
+      }
+
       DataNotifier.notify();
 
       if (!mounted) return;
@@ -438,7 +445,6 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
   @override
   Widget build(BuildContext context) {
     final isMobile = Responsive.isMobile(context);
-    final isTablet = Responsive.isTablet(context);
 
     return Scaffold(
       backgroundColor: PosColors.background,
@@ -552,15 +558,15 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
   }
 
   Widget _menuHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Pesan Seblak',
+          Text('Pesan Seblak',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: PosColors.textPrimary, letterSpacing: -0.4)),
-          const SizedBox(height: 2),
-          const Text('Pilih item favoritmu!',
+          SizedBox(height: 2),
+          Text('Pilih item favoritmu!',
               style: TextStyle(fontSize: 12, color: PosColors.textSecondary)),
         ],
       ),
@@ -1505,7 +1511,6 @@ class _StrukDialogState extends State<_StrukDialog> {
     final now = DateTime.now();
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
     final dateStr = '${now.day} ${months[now.month - 1]} ${now.year}  ${now.hour.toString().padLeft(2, '0')}.${now.minute.toString().padLeft(2, '0')}';
-    final methodLabel = widget.metode == 'Cash' ? 'Tunai' : widget.metode;
 
     return Dialog(
       backgroundColor: PosColors.surface,

@@ -6,17 +6,63 @@ class PrinterService {
   static bool _connected = false;
   static String? _connectedName;
   static String? _connectedAddress;
+  static bool _busy = false; // cegah connect/print bertumpuk
 
   static const String _keyLastMac = 'last_printer_mac';
   static const String _keyLastName = 'last_printer_name';
+  static const Duration _connectTimeout = Duration(seconds: 10);
+
+  // ==================== KONEK DENGAN RETRY & TIMEOUT ====================
+  static Future<bool> _connectWithRetry(String mac, {int retries = 2}) async {
+    for (int attempt = 1; attempt <= retries + 1; attempt++) {
+      try {
+        final bool success = await PrintBluetoothThermal.connect(
+          macPrinterAddress: mac,
+        ).timeout(_connectTimeout, onTimeout: () => false);
+
+        if (success) {
+          // Beri waktu koneksi stabil, lalu verifikasi status sesungguhnya
+          await Future.delayed(const Duration(milliseconds: 800));
+          final verified = await PrintBluetoothThermal.connectionStatus
+              .timeout(const Duration(seconds: 3), onTimeout: () => false);
+          if (verified) return true;
+          debugPrint('[Printer] Konek dilaporkan sukses tapi verifikasi gagal (percobaan $attempt)');
+        } else {
+          debugPrint('[Printer] Konek gagal (percobaan $attempt)');
+        }
+      } catch (e) {
+        debugPrint('[Printer] Connect error percobaan $attempt: $e');
+      }
+
+      if (attempt <= retries) {
+        // Pastikan koneksi lama benar-benar tertutup sebelum retry
+        try {
+          await PrintBluetoothThermal.disconnect;
+        } catch (_) {}
+        await Future.delayed(const Duration(seconds: 1));
+      }
+    }
+    return false;
+  }
 
   // ==================== AUTO RECONNECT ====================
   static Future<bool> autoReconnect() async {
+    if (_busy) return _connected;
+    _busy = true;
     try {
       final btEnabled = await PrintBluetoothThermal.bluetoothEnabled;
       if (!btEnabled) {
         debugPrint('[Printer] Bluetooth tidak aktif, skip auto reconnect');
+        _connected = false;
         return false;
+      }
+
+      // Kalau sudah terhubung beneran, tidak perlu reconnect
+      final already = await PrintBluetoothThermal.connectionStatus
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
+      if (already) {
+        _connected = true;
+        return true;
       }
 
       final prefs = await SharedPreferences.getInstance();
@@ -25,20 +71,16 @@ class PrinterService {
 
       if (lastMac == null || lastMac.isEmpty) {
         debugPrint('[Printer] Tidak ada printer tersimpan');
+        _connected = false;
         return false;
       }
 
       debugPrint('[Printer] Auto reconnect ke: $lastName ($lastMac)');
+      _connected = await _connectWithRetry(lastMac);
 
-      final bool success = await PrintBluetoothThermal.connect(
-        macPrinterAddress: lastMac,
-      );
-
-      _connected = success;
       if (_connected) {
         _connectedAddress = lastMac;
         _connectedName = lastName;
-        await Future.delayed(const Duration(milliseconds: 500));
         debugPrint('[Printer] Auto reconnect BERHASIL: $_connectedName');
       } else {
         debugPrint('[Printer] Auto reconnect GAGAL');
@@ -47,7 +89,10 @@ class PrinterService {
       return _connected;
     } catch (e) {
       debugPrint('[Printer] Auto reconnect error: $e');
+      _connected = false;
       return false;
+    } finally {
+      _busy = false;
     }
   }
 
@@ -91,14 +136,16 @@ class PrinterService {
 
   // ==================== KONEK PRINTER ====================
   static Future<bool> connect(String macAddress, String printerName) async {
+    if (_busy) {
+      debugPrint('[Printer] Sedang ada proses lain, tunggu...');
+      return false;
+    }
+    _busy = true;
     try {
       debugPrint('[Printer] Menghubungkan ke: $printerName ($macAddress)');
 
-      final bool success = await PrintBluetoothThermal.connect(
-        macPrinterAddress: macAddress,
-      );
+      _connected = await _connectWithRetry(macAddress);
 
-      _connected = success;
       if (_connected) {
         _connectedAddress = macAddress;
         _connectedName = printerName;
@@ -107,7 +154,6 @@ class PrinterService {
         await prefs.setString(_keyLastMac, macAddress);
         await prefs.setString(_keyLastName, printerName);
 
-        await Future.delayed(const Duration(milliseconds: 500));
         debugPrint('[Printer] Konek BERHASIL: $_connectedName');
       } else {
         debugPrint('[Printer] Konek GAGAL');
@@ -116,19 +162,24 @@ class PrinterService {
       return _connected;
     } catch (e) {
       debugPrint('[Printer] Connect error: $e');
+      _connected = false;
       return false;
+    } finally {
+      _busy = false;
     }
   }
 
   // ==================== CEK STATUS KONEKSI ====================
   static Future<bool> checkConnection() async {
     try {
-      final bool status = await PrintBluetoothThermal.connectionStatus;
+      final bool status = await PrintBluetoothThermal.connectionStatus
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
       _connected = status;
       debugPrint('[Printer] Status koneksi: $_connected');
       return _connected;
     } catch (e) {
       debugPrint('[Printer] Check connection error: $e');
+      _connected = false;
       return false;
     }
   }
@@ -136,6 +187,9 @@ class PrinterService {
   // ==================== DISKONEK ====================
   static Future<void> disconnect() async {
     try {
+      try {
+        await PrintBluetoothThermal.disconnect;
+      } catch (_) {}
       _connected = false;
       _connectedName = null;
       _connectedAddress = null;
@@ -172,18 +226,36 @@ class PrinterService {
     }
   }
 
+  // ==================== HELPER: TULIS BYTES PER CHUNK ====================
+  // Printer thermal murah sering drop kalau dikirim data besar sekaligus.
+  // Kirim per 512 byte dengan jeda kecil supaya buffer printer tidak penuh.
+  static Future<bool> _writeChunked(List<int> bytes) async {
+    const chunkSize = 512;
+    for (int i = 0; i < bytes.length; i += chunkSize) {
+      final end = (i + chunkSize < bytes.length) ? i + chunkSize : bytes.length;
+      final ok = await PrintBluetoothThermal.writeBytes(bytes.sublist(i, end));
+      if (!ok) return false;
+      await Future.delayed(const Duration(milliseconds: 60));
+    }
+    return true;
+  }
+
+  // ==================== HELPER: PASTIKAN SIAP CETAK ====================
+  static Future<bool> _ensureReady() async {
+    final ok = await checkConnection();
+    if (ok) return true;
+    debugPrint('[Printer] Tidak terhubung, coba auto reconnect...');
+    return await autoReconnect();
+  }
+
   // ==================== CETAK TEKS SEDERHANA ====================
   static Future<bool> printText(String text) async {
-    if (!_connected) {
-      _connected = await checkConnection();
-      if (!_connected) return false;
-    }
+    if (!await _ensureReady()) return false;
     try {
-      final bool result =
-          await PrintBluetoothThermal.writeBytes(text.codeUnits);
-      return result;
+      return await _writeChunked(text.codeUnits);
     } catch (e) {
       debugPrint('[Printer] Print text error: $e');
+      _connected = false;
       return false;
     }
   }
@@ -199,14 +271,7 @@ class PrinterService {
     required List<Map<String, dynamic>> items,
     String catatan = '',
   }) async {
-    if (!_connected) {
-      _connected = await checkConnection();
-      if (!_connected) {
-        debugPrint('[Printer] Tidak terhubung, coba auto reconnect...');
-        _connected = await autoReconnect();
-        if (!_connected) return false;
-      }
-    }
+    if (!await _ensureReady()) return false;
 
     try {
       final StringBuffer buffer = StringBuffer();
@@ -306,7 +371,7 @@ class PrinterService {
       buffer.writeln();
       buffer.writeln();
 
-      final bool result = await PrintBluetoothThermal.writeBytes(buffer.toString().codeUnits);
+      final bool result = await _writeChunked(buffer.toString().codeUnits);
 
       debugPrint('[Printer] Print receipt: ${result ? 'BERHASIL' : 'GAGAL'}');
       return result;
@@ -319,10 +384,7 @@ class PrinterService {
 
   // ==================== TEST PRINT ====================
   static Future<bool> printTest() async {
-    if (!_connected) {
-      _connected = await checkConnection();
-      if (!_connected) return false;
-    }
+    if (!await _ensureReady()) return false;
 
     try {
       final StringBuffer buffer = StringBuffer();
@@ -339,8 +401,7 @@ class PrinterService {
       buffer.writeln();
       buffer.writeln();
 
-      final bool result =
-          await PrintBluetoothThermal.writeBytes(buffer.toString().codeUnits);
+      final bool result = await _writeChunked(buffer.toString().codeUnits);
 
       debugPrint('[Printer] Test print: ${result ? 'BERHASIL' : 'GAGAL'}');
       return result;

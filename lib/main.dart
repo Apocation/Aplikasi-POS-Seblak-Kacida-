@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'core/services/firebase_service.dart';
 import 'core/services/permission_service.dart';
+import 'core/services/sync_service.dart';
 import 'firebase_options.dart';
 import 'features/auth/login_page.dart';
 import 'core/services/theme_service.dart';
@@ -35,18 +38,36 @@ void main() async {
     ),
   );
 
-  // Error handling
+  // Error handling default (tanpa Firebase, hanya log ke console)
   FlutterError.onError = (details) {
     debugPrint(details.exceptionAsString());
   };
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Initialize Firebase (hanya Android yang terdaftar di project-seblak-kacida)
+  if (Platform.isAndroid) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-  // Firebase sync
-  FirebaseService.syncAll();
+    // Crashlytics: semua error terkirim ke dashboard Firebase,
+    // bisa dicek dari rumah tanpa harus datang ke warung
+    FlutterError.onError = (details) {
+      debugPrint(details.exceptionAsString());
+      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+
+    // Sync penuh sekali saat startup (push semua + pull dari cloud)
+    FirebaseService.syncAll();
+
+    // Sync otomatis: timer tiap 5 menit + kirim ulang saat internet kembali
+    SyncService.start();
+  } else {
+    debugPrint('ℹ️ Firebase dilewati: platform ini belum terdaftar di project Firebase');
+  }
 
   runApp(const SeblakPOSApp());
 }

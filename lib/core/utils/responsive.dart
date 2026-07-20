@@ -11,12 +11,16 @@ class Responsive {
   // DEVICE TYPE
   // =========================
   static bool isMobile(BuildContext context) {
-    return MediaQuery.of(context).size.width < mobile;
+    final size = MediaQuery.of(context).size;
+    final isPortrait = size.height >= size.width;
+    // Tablet portrait (lebar < 900) tetap pakai layout mobile,
+    // karena kontennya terlalu sempit untuk layout sidebar + tabel
+    return size.width < mobile || (isPortrait && size.width < 900);
   }
 
   static bool isTablet(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    return width >= 600 && width < 1024;
+    return !isMobile(context) && width >= 600 && width < 1024;
   }
 
   static bool isDesktop(BuildContext context) {

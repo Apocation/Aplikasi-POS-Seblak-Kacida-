@@ -29,7 +29,6 @@ class _DebugPageState extends State<DebugPage>
 
   bool   _loading      = true;
   String _errorMessage = '';
-  int    _pendingCount = 0;
 
   @override
   void initState() {
@@ -54,8 +53,6 @@ class _DebugPageState extends State<DebugPage>
       // Ambil data via DatabaseHelper (bukan langsung akses .database)
       final produk    = await DatabaseHelper.instance.getProducts();
       final transaksi = await DatabaseHelper.instance.getOrders();
-// SheetsService removed
-const pending = 0;
 
 
       // Order items — query manual via db
@@ -98,7 +95,6 @@ const pending = 0;
         _transaksi   = transaksi;
         _items       = enrichedItems;
         _users       = users;
-        _pendingCount = pending;
         _loading     = false;
       });
     } catch (e) {
@@ -153,11 +149,6 @@ const pending = 0;
   int get _stokHabis =>
       _produk.where((p) => (p['stock'] as int? ?? 0) == 0).length;
 
-  int _stokRendah() =>
-      _produk.where((p) {
-        final s = p['stock'] as int? ?? 0;
-        return s > 0 && s < 10;
-      }).length;
 
 
 
@@ -390,8 +381,11 @@ const pending = 0;
         final Color rowColor;
         if (stock == 0) {
           rowColor = PosColors.errorBg;
-        } else if (stock < 10) rowColor = PosColors.warningBg;
-        else                 rowColor = PosColors.surface;
+        } else if (stock < 10) {
+          rowColor = PosColors.warningBg;
+        } else {
+          rowColor = PosColors.surface;
+        }
 
         return Container(
           padding: const EdgeInsets.all(14),

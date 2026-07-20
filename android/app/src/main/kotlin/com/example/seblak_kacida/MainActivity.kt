@@ -1,4 +1,4 @@
-package com.example.seblak_pos
+package com.example.seblak_kacida
 
 import io.flutter.embedding.android.FlutterActivity
 

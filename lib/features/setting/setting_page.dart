@@ -128,45 +128,27 @@ class _SettingPageState extends State<SettingPage> {
   }
 
   Future<void> _doRestore() async {
-    final files = await BackupService.getBackupFiles();
-    if (files.isEmpty) {
-      _showSnack('Tidak ada file backup', isError: true);
-      return;
-    }
-    
-    showDialog(
+    // Pilih sumber: file manager (folder/Drive) atau backup lokal aplikasi
+    final source = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Pilih Backup'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: files.length,
-            itemBuilder: (_, i) {
-              final file = files[i];
-              final name = file.path.split('/').last;
-              return ListTile(
-                title: Text(name),
-                subtitle: Text(file.path),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final success = await BackupService.restoreDatabase(File(file.path));
-                  if (success) {
-                    _showSnack('Restore berhasil! Aplikasi akan direset.');
-                    await Future.delayed(const Duration(seconds: 2));
-                    if (mounted) {
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(builder: (_) => const SettingPage()),
-                      );
-                    }
-                  } else {
-                    _showSnack('Restore gagal!', isError: true);
-                  }
-                },
-              );
-            },
-          ),
+        title: const Text('Restore Dari Mana?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.folder_open_rounded, color: PosColors.primary),
+              title: const Text('Pilih File'),
+              subtitle: const Text('Cari file .db di folder, Download, atau Google Drive'),
+              onTap: () => Navigator.pop(ctx, 'file'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.history_rounded, color: PosColors.primary),
+              title: const Text('Backup Lokal'),
+              subtitle: const Text('Dari daftar backup yang dibuat di aplikasi ini'),
+              onTap: () => Navigator.pop(ctx, 'local'),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -176,6 +158,86 @@ class _SettingPageState extends State<SettingPage> {
         ],
       ),
     );
+    if (source == null || !mounted) return;
+
+    File? backupFile;
+    if (source == 'file') {
+      backupFile = await BackupService.pickBackupFile();
+      if (backupFile == null) return; // user batal memilih
+    } else {
+      final files = await BackupService.getBackupFiles();
+      if (files.isEmpty) {
+        _showSnack('Belum ada backup lokal. Buat backup dulu, atau pilih file dari folder/Drive.', isError: true);
+        return;
+      }
+      if (!mounted) return;
+      final picked = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Pilih Backup Lokal'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: files.length,
+              itemBuilder: (_, i) {
+                final file = files[i];
+                final name = file.path.split(Platform.pathSeparator).last.split('/').last;
+                return ListTile(
+                  leading: const Icon(Icons.insert_drive_file_rounded),
+                  title: Text(name, style: const TextStyle(fontSize: 13)),
+                  onTap: () => Navigator.pop(ctx, file.path),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal'),
+            ),
+          ],
+        ),
+      );
+      if (picked == null) return;
+      backupFile = File(picked);
+    }
+
+    if (!mounted) return;
+    // Konfirmasi terakhir sebelum data ditimpa
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Yakin Restore?'),
+        content: Text(
+          'SEMUA data saat ini (produk, transaksi, user, setting toko) akan '
+          'DIGANTI dengan isi file backup:\n\n'
+          '${backupFile!.path.split(Platform.pathSeparator).last.split('/').last}\n\n'
+          'Disarankan buat backup dulu sebelum restore.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: PosColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ya, Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final success = await BackupService.restoreDatabase(backupFile);
+    if (!mounted) return;
+    if (success) {
+      _showSnack('Restore berhasil! Data sudah diganti dengan isi backup.');
+      _load(); // muat ulang setting toko dari data hasil restore
+    } else {
+      _showSnack('Restore gagal! File bukan backup database yang valid.', isError: true);
+    }
   }
 
   // ==================== EXPORT ====================
@@ -345,7 +407,9 @@ class _SettingPageState extends State<SettingPage> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Backup menyimpan semua data ke file .db. Restore akan mengganti semua data saat ini.',
+          'Backup menyimpan SEMUA data (produk, transaksi, user, setting) ke file .db '
+          'dan langsung bisa dikirim ke Google Drive/WhatsApp. '
+          'Restore bisa memilih file dari folder atau Drive, dan akan mengganti semua data saat ini.',
           style: TextStyle(fontSize: 11, color: PosColors.textMuted),
         ),
       ],

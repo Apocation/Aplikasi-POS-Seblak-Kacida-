@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../database/database_helper.dart';
@@ -41,7 +42,7 @@ class ExportService {
       
       return file;
     } catch (e) {
-      print('Export error: $e');
+      debugPrint('Export error: $e');
       return null;
     }
   }
@@ -71,7 +72,7 @@ class ExportService {
       
       return file;
     } catch (e) {
-      print('Export products error: $e');
+      debugPrint('Export products error: $e');
       return null;
     }
   }

@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "452349470207",
-    "project_id": "seblak-pos",
-    "storage_bucket": "seblak-pos.firebasestorage.app"
+    "project_number": "541009219366",
+    "project_id": "project-seblak-kacida",
+    "storage_bucket": "project-seblak-kacida.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:452349470207:android:a319c379b028d1168fb3ca",
+        "mobilesdk_app_id": "1:541009219366:android:211d28e5a35ed5550f3be7",
         "android_client_info": {
-          "package_name": "com.example.seblak_pos"
+          "package_name": "com.example.seblak_kacida"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCEW6l-FcC-zuKIFycXd69XXkeyEB4SI0E"
+          "current_key": "AIzaSyALpZAWPZHdT3Gnf4E6hz7EQEpxRKBS3As"
         }
       ],
       "services": {

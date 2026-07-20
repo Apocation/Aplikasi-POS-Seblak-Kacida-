@@ -5,6 +5,7 @@ import '../../core/services/data_notifier.dart';
 import '../../theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/database/database_helper.dart';
+import '../../core/services/firebase_service.dart';
 import '../../core/services/image_service.dart';
 
 
@@ -91,7 +92,8 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
       context: context,
       builder: (_) => _ProdukFormDialog(
         onSave: (data) async {
-          await DatabaseHelper.instance.insertProduct(data);
+          final newId = await DatabaseHelper.instance.insertProduct(data);
+          FirebaseService.pushSingleProduct(newId);
           DataNotifier.notify();
           _load();
         },
@@ -106,6 +108,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
         existing: produk,
         onSave: (data) async {
           await DatabaseHelper.instance.updateProduct(produk['id'] as String, data);
+          FirebaseService.pushSingleProduct(produk['id'] as String);
           DataNotifier.notify();
           _load();
         },
@@ -119,6 +122,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
       produk['id'] as String,
       {'stock': stock > 0 ? 0 : 10},
     );
+    FirebaseService.pushSingleProduct(produk['id'] as String);
     DataNotifier.notify();
     _load();
   }
@@ -135,6 +139,8 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
               .deleteIfLocal(produk['image_url'] as String?);
           await DatabaseHelper.instance
               .deleteProduct(produk['id'] as String);
+          // Hapus juga di cloud supaya tidak muncul lagi saat pull
+          FirebaseService.deleteProduct(produk['id'] as String);
           DataNotifier.notify();
           _load();
         },

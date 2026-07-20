@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:uuid/uuid.dart';
@@ -17,13 +18,23 @@ class DatabaseHelper {
     return _database!;
   }
 
+  /// Tutup koneksi database. WAJIB dipanggil sebelum mengganti file DB
+  /// (restore backup), supaya file baru benar-benar terbaca setelahnya.
+  Future<void> close() async {
+    final db = _database;
+    if (db != null) {
+      await db.close();
+      _database = null;
+    }
+  }
+
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
     return await openDatabase(
       path,
-      version: 2, // Update version karena ada perubahan struktur
+      version: 3, // v3: kolom synced untuk antrian sync cloud
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -35,7 +46,17 @@ class DatabaseHelper {
       try {
         await db.execute('ALTER TABLE orders ADD COLUMN customer_name TEXT DEFAULT "Pelanggan"');
       } catch (e) {
-        print('Error upgrading database: $e');
+        debugPrint('Error upgrading database: $e');
+      }
+    }
+    if (oldVersion < 3) {
+      // Penanda apakah order sudah ter-push ke Firestore.
+      // Default 0 supaya order lama ikut ter-push ulang sekali (idempotent,
+      // karena doc id di cloud = order id).
+      try {
+        await db.execute('ALTER TABLE orders ADD COLUMN synced INTEGER DEFAULT 0');
+      } catch (e) {
+        debugPrint('Error upgrading database (v3): $e');
       }
     }
   }
@@ -77,6 +98,7 @@ class DatabaseHelper {
       status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Paid', 'Pending')),
       amount_paid REAL DEFAULT 0,      -- Uang yang dibayar
       change_amount REAL DEFAULT 0,     -- Kembalian
+      synced INTEGER DEFAULT 0,         -- 0 = belum ter-push ke cloud
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
     ''');
@@ -240,6 +262,72 @@ class DatabaseHelper {
     await db.delete('products');
   }
 
+  /// Gabungkan satu produk dari cloud ke lokal (per-dokumen, tanpa hapus-semua).
+  /// - ID sama ada di lokal → bandingkan updated_at, yang lebih baru menang.
+  /// - ID tidak ada tapi ada produk dengan nama+kategori sama (kasus reinstall,
+  ///   produk default di-seed dengan UUID baru) → ganti baris seed dengan data cloud.
+  /// - Benar-benar baru → insert.
+  /// Return: 'inserted' | 'updated' | 'kept'
+  Future<String> mergeProductFromCloud(String id, Map<String, dynamic> data) async {
+    final db = await instance.database;
+    const allowed = {'name', 'category', 'price', 'stock', 'image_url', 'created_at', 'updated_at'};
+    final row = <String, dynamic>{'id': id};
+    for (final key in allowed) {
+      if (data.containsKey(key)) row[key] = data[key];
+    }
+
+    final existing = await db.query('products', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (existing.isNotEmpty) {
+      final localUpdated = existing.first['updated_at']?.toString() ?? '';
+      final cloudUpdated = row['updated_at']?.toString() ?? '';
+      // ISO-8601 bisa dibandingkan sebagai string
+      if (cloudUpdated.compareTo(localUpdated) > 0) {
+        await db.update('products', row, where: 'id = ?', whereArgs: [id]);
+        return 'updated';
+      }
+      return 'kept';
+    }
+
+    // ID tidak dikenal — cek duplikat by nama+kategori (produk seed hasil reinstall)
+    final name = row['name']?.toString();
+    final category = row['category']?.toString();
+    if (name != null && category != null) {
+      final dupe = await db.query(
+        'products',
+        where: 'LOWER(name) = LOWER(?) AND LOWER(category) = LOWER(?)',
+        whereArgs: [name, category],
+        limit: 1,
+      );
+      if (dupe.isNotEmpty) {
+        final dupeId = dupe.first['id'].toString();
+        final used = await db.query(
+          'order_items',
+          columns: ['id'],
+          where: 'product_id = ?',
+          whereArgs: [dupeId],
+          limit: 1,
+        );
+        if (used.isEmpty) {
+          // Baris seed belum pernah dipakai transaksi → aman diganti versi cloud
+          await db.delete('products', where: 'id = ?', whereArgs: [dupeId]);
+          await db.insert('products', row, conflictAlgorithm: ConflictAlgorithm.replace);
+          return 'updated';
+        }
+        // Sudah dipakai transaksi lokal → biarkan dua-duanya, jangan hapus data
+      }
+    }
+
+    await db.insert('products', row, conflictAlgorithm: ConflictAlgorithm.replace);
+    return 'inserted';
+  }
+
+  /// Cek apakah order sudah ada di lokal
+  Future<bool> orderExists(String orderId) async {
+    final db = await instance.database;
+    final result = await db.query('orders', columns: ['id'], where: 'id = ?', whereArgs: [orderId], limit: 1);
+    return result.isNotEmpty;
+  }
+
   Future<List<Map<String, dynamic>>> getAllProducts() async {
     final db = await instance.database;
     return await db.query('products');
@@ -380,6 +468,8 @@ class DatabaseHelper {
 
   Future<int> deleteOrder(String id) async {
     final db = await instance.database;
+    // Hapus item-item order dulu supaya tidak ada data yatim
+    await db.delete('order_items', where: 'order_id = ?', whereArgs: [id]);
     return await db.delete('orders', where: 'id = ?', whereArgs: [id]);
   }
 
@@ -529,6 +619,35 @@ class DatabaseHelper {
   }
 
   // ==================== SYNC METHODS (untuk Firebase) ====================
+
+  /// Order yang belum ter-push ke cloud (synced = 0), paling lama duluan
+  Future<List<Map<String, dynamic>>> getUnsyncedOrders() async {
+    final db = await instance.database;
+    return await db.query(
+      'orders',
+      where: 'synced = 0 OR synced IS NULL',
+      orderBy: 'created_at ASC',
+    );
+  }
+
+  Future<int> countUnsyncedOrders() async {
+    final db = await instance.database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM orders WHERE synced = 0 OR synced IS NULL',
+    );
+    return (result.first['count'] ?? 0) as int;
+  }
+
+  Future<void> markOrderSynced(String orderId) async {
+    final db = await instance.database;
+    await db.update(
+      'orders',
+      {'synced': 1},
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getAllOrdersWithItems() async {
     final db = await instance.database;
     final orders = await db.query('orders', orderBy: 'created_at DESC');
@@ -549,6 +668,7 @@ class DatabaseHelper {
   Future<void> insertTransactionFromCloud(Map<String, dynamic> transactionData) async {
     final db = await instance.database;
     final order = Map<String, dynamic>.from(transactionData['order']);
+    order['synced'] = 1; // data dari cloud sudah pasti ada di cloud
     await db.insert('orders', order, conflictAlgorithm: ConflictAlgorithm.replace);
     final items = transactionData['items'] as List;
     for (final item in items) {
@@ -593,7 +713,7 @@ class DatabaseHelper {
       LIMIT ?
     ''', [limit]);
     
-    print('Top products all time: $result'); // Debug
+    debugPrint('Top products all time: $result'); // Debug
     
     return result;
   }
@@ -617,7 +737,7 @@ class DatabaseHelper {
       LIMIT ?
     ''', [today, limit]);
     
-    print('Top products today: $result'); // Debug
+    debugPrint('Top products today: $result'); // Debug
     
     return result;
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/services/data_notifier.dart';
+import '../../core/services/firebase_service.dart';
 import '../../core/services/printer_service.dart';
 import '../../core/utils/responsive.dart';
 
@@ -150,6 +151,7 @@ class _TransaksiPageState extends State<TransaksiPage> with DataRefreshMixin {
                                     isPrinting: _isPrinting,
                                     onPrint: (orderId, items, metode, total, bayar, kembalian, pemesan, catatan) =>
                                         _printReceipt(orderId, items, metode, total, bayar, kembalian, pemesan, catatan),
+                                    onDelete: () => _deleteOrder(filtered[i]),
                                   ),
                                 ),
                                 childCount: filtered.length,
@@ -161,6 +163,49 @@ class _TransaksiPageState extends State<TransaksiPage> with DataRefreshMixin {
         ),
       ),
     );
+  }
+
+  // ==================== HAPUS TRANSAKSI ====================
+  Future<void> _deleteOrder(Map<String, dynamic> order) async {
+    final invoice = _invoiceNo(order);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Transaksi?'),
+        content: Text(
+          'Transaksi $invoice akan dihapus permanen dari perangkat ini dan dari cloud.\n\n'
+          'Catatan: stok produk TIDAK dikembalikan otomatis.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: PosColors.error),
+            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final orderId = order['id'] as String;
+    await DatabaseHelper.instance.deleteOrder(orderId);
+    await FirebaseService.deleteTransaction(orderId);
+
+    DataNotifier.notify();
+    await _load();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Transaksi $invoice dihapus'),
+          backgroundColor: PosColors.success,
+        ),
+      );
+    }
   }
 
   // ==================== FUNGSI CETAK STRUK ====================
@@ -264,10 +309,11 @@ class _TransaksiPageState extends State<TransaksiPage> with DataRefreshMixin {
                 title: Text(name),
                 subtitle: Text(address),
                 onTap: () async {
+                  final messenger = ScaffoldMessenger.of(this.context);
                   Navigator.pop(context);
                   await PrinterService.connect(address, name);
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(content: Text('Terhubung ke $name')),
                     );
                   }
@@ -390,6 +436,7 @@ class _TransaksiCard extends StatefulWidget {
   final String Function(String?) formatDate;
   final bool isPrinting;
   final Function(String, List<Map<String, dynamic>>, String, double, double, double, String, String) onPrint;
+  final VoidCallback onDelete;
 
   const _TransaksiCard({
     required this.order,
@@ -398,6 +445,7 @@ class _TransaksiCard extends StatefulWidget {
     required this.formatDate,
     required this.isPrinting,
     required this.onPrint,
+    required this.onDelete,
   });
 
   @override
@@ -627,6 +675,16 @@ class _TransaksiCardState extends State<_TransaksiCard> with SingleTickerProvide
                   side: const BorderSide(color: PosColors.border),
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
                   textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: widget.onDelete,
+                tooltip: 'Hapus transaksi',
+                icon: const Icon(Icons.delete_outline_rounded, size: 20, color: PosColors.error),
+                style: IconButton.styleFrom(
+                  backgroundColor: PosColors.errorBg,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PosRadius.md)),
                 ),
               ),
             ],
