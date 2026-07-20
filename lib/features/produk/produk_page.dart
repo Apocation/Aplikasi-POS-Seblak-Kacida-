@@ -93,7 +93,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
       builder: (_) => _ProdukFormDialog(
         onSave: (data) async {
           final newId = await DatabaseHelper.instance.insertProduct(data);
-          FirebaseService.pushSingleProduct(newId);
+          await FirebaseService.pushSingleProduct(newId);
           DataNotifier.notify();
           _load();
         },
@@ -108,7 +108,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
         existing: produk,
         onSave: (data) async {
           await DatabaseHelper.instance.updateProduct(produk['id'] as String, data);
-          FirebaseService.pushSingleProduct(produk['id'] as String);
+          await FirebaseService.pushSingleProduct(produk['id'] as String);
           DataNotifier.notify();
           _load();
         },
@@ -122,7 +122,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
       produk['id'] as String,
       {'stock': stock > 0 ? 0 : 10},
     );
-    FirebaseService.pushSingleProduct(produk['id'] as String);
+    await FirebaseService.pushSingleProduct(produk['id'] as String);
     DataNotifier.notify();
     _load();
   }
@@ -140,7 +140,7 @@ class _ProdukPageState extends State<ProdukPage> with DataRefreshMixin {
           await DatabaseHelper.instance
               .deleteProduct(produk['id'] as String);
           // Hapus juga di cloud supaya tidak muncul lagi saat pull
-          FirebaseService.deleteProduct(produk['id'] as String);
+          await FirebaseService.deleteProduct(produk['id'] as String);
           DataNotifier.notify();
           _load();
         },

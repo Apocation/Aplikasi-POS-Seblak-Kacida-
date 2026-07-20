@@ -346,9 +346,9 @@ class _KasirPageState extends State<KasirPage> with DataRefreshMixin {
       // Sync ke Firestore (jangan blokir UI kalau internet lambat/mati —
       // kalau gagal, transaksi tetap tersimpan lokal dan akan ikut
       // ter-push saat syncAll() berikutnya)
-      FirebaseService.pushSingleTransaction(orderId);
+      await FirebaseService.pushSingleTransaction(orderId);
       for (final item in tempCart) {
-        FirebaseService.pushProductStock(
+        await FirebaseService.pushProductStock(
           item['id'] as String,
           (item['stock'] as int) - (item['qty'] as int),
         );

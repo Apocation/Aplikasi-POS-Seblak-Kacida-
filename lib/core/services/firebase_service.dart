@@ -1,13 +1,66 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import '../../firebase_options.dart';
 import '../database/database_helper.dart';
 
 class FirebaseService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static bool _initialized = false;
+  static bool _initializing = false;
+  static Future<void>? _initializationFuture;
 
   /// Batas tunggu operasi Firestore. Tanpa ini, saat internet mati
   /// Future dari set()/update() bisa menggantung tanpa pernah selesai.
   static const Duration _timeout = Duration(seconds: 15);
+
+  static Future<void> initialize() async {
+    if (_initialized) return;
+    if (_initializing) {
+      await _initializationFuture;
+      return;
+    }
+
+    _initializing = true;
+    _initializationFuture = _initializeInternal();
+    try {
+      await _initializationFuture;
+    } finally {
+      _initializing = false;
+      _initializationFuture = null;
+    }
+  }
+
+  static Future<void> _initializeInternal() async {
+    try {
+      if (kIsWeb) {
+        await Firebase.initializeApp();
+      } else if (Platform.isAndroid || Platform.isIOS) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      } else {
+        await Firebase.initializeApp();
+      }
+
+      _firestore.settings = const Settings(persistenceEnabled: true);
+
+      try {
+        await FirebaseAuth.instance.signInAnonymously();
+      } catch (e) {
+        debugPrint('⚠️ Anonymous auth unavailable, continuing: $e');
+      }
+
+      _initialized = true;
+      debugPrint('✅ Firebase Firestore siap digunakan');
+    } catch (e) {
+      debugPrint('❌ Firebase init gagal: $e');
+      rethrow;
+    }
+  }
 
   // ==================== MAIN SYNC METHODS ====================
 
@@ -30,6 +83,7 @@ class FirebaseService {
   /// Return jumlah transaksi yang berhasil di-push.
   static Future<int> syncPendingTransactions() async {
     try {
+      await initialize();
       final pending = await DatabaseHelper.instance.getUnsyncedOrders();
       if (pending.isEmpty) return 0;
 
@@ -60,6 +114,7 @@ class FirebaseService {
   /// Jika berhasil, order ditandai synced = 1 di lokal.
   static Future<bool> pushSingleTransaction(String orderId) async {
     try {
+      await initialize();
       final orderData = await DatabaseHelper.instance.getOrderById(orderId);
       if (orderData == null) {
         debugPrint('⚠️ Order $orderId tidak ditemukan di lokal');
@@ -84,6 +139,7 @@ class FirebaseService {
   /// Update stok produk di cloud setelah penjualan (tanpa hapus-tulis semua)
   static Future<void> pushProductStock(String productId, int newStock) async {
     try {
+      await initialize();
       // set+merge, bukan update(): tetap berhasil walau dokumennya belum ada di cloud
       await _firestore.collection('products').doc(productId).set({
         'stock': newStock,
@@ -100,6 +156,7 @@ class FirebaseService {
   /// tanpa menunggu sync penuh berikutnya.
   static Future<void> pushSingleProduct(String productId) async {
     try {
+      await initialize();
       final product = await DatabaseHelper.instance.getProductById(productId);
       if (product == null) return;
       final data = Map<String, dynamic>.from(product);
@@ -119,6 +176,7 @@ class FirebaseService {
   /// Tanpa ini, produk yang dihapus lokal akan muncul lagi saat pull berikutnya.
   static Future<void> deleteProduct(String productId) async {
     try {
+      await initialize();
       await _firestore.collection('products').doc(productId).delete().timeout(_timeout);
       debugPrint('✅ Produk $productId dihapus dari cloud');
     } catch (e) {
@@ -129,6 +187,7 @@ class FirebaseService {
   /// Hapus satu transaksi dari cloud (untuk tombol hapus di halaman Transaksi)
   static Future<void> deleteTransaction(String orderId) async {
     try {
+      await initialize();
       await _firestore.collection('transactions').doc(orderId).delete().timeout(_timeout);
       debugPrint('✅ Transaksi $orderId dihapus dari cloud');
     } catch (e) {
@@ -140,6 +199,7 @@ class FirebaseService {
 
   static Future<void> pullFromCloud() async {
     try {
+      await initialize();
       await _pullProducts();
       await _pullTransactions();
     } catch (e) {
@@ -150,6 +210,7 @@ class FirebaseService {
   /// Gabungkan produk cloud ke lokal per-dokumen.
   /// Tidak pernah menghapus semua data lokal; konflik diputuskan lewat updated_at.
   static Future<void> _pullProducts() async {
+    await initialize();
     final productsSnap =
         await _firestore.collection('products').get().timeout(_timeout);
 
@@ -173,6 +234,7 @@ class FirebaseService {
   /// Ambil transaksi cloud yang belum ada di lokal (per-dokumen).
   /// Transaksi yang sudah ada di lokal tidak disentuh.
   static Future<void> _pullTransactions() async {
+    await initialize();
     final transactionsSnap =
         await _firestore.collection('transactions').get().timeout(_timeout);
 
@@ -197,6 +259,7 @@ class FirebaseService {
 
   static Future<bool> pushToCloud() async {
     try {
+      await initialize();
       await _pushProducts();
       await _pushTransactions();
       return true;
@@ -210,6 +273,7 @@ class FirebaseService {
   /// Tidak ada fase hapus — kalau proses terputus, dokumen yang sudah terkirim
   /// tetap utuh dan sisanya menyusul di sync berikutnya.
   static Future<void> _pushProducts() async {
+    await initialize();
     final localProducts = await DatabaseHelper.instance.getAllProducts();
 
     if (localProducts.isEmpty) {
@@ -233,6 +297,7 @@ class FirebaseService {
 
   /// Kirim hanya transaksi yang belum ter-sync (synced = 0), per-dokumen.
   static Future<void> _pushTransactions() async {
+    await initialize();
     final pending = await DatabaseHelper.instance.getUnsyncedOrders();
     if (pending.isEmpty) return;
 
@@ -251,6 +316,7 @@ class FirebaseService {
   
   static Future<bool> checkConnection() async {
     try {
+      await initialize();
       await _firestore.collection('products').limit(1).get();
       return true;
     } catch (e) {
